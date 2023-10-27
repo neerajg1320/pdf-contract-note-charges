@@ -159,7 +159,7 @@ def process_contractnotes_folder(data_folder, *, start_date=None, end_date=None,
 
             try:
                 charges_sum_df = get_charges_aggregate_df_from_pdf(pdf_file_path)
-                
+
                 charges_sum_df['Date'] = date
                 charges_sum_df = charges_sum_df[['Date', 'Equity', 'Equity (T+1)', 'Futures and Options', 'NET TOTAL']]
 
@@ -178,24 +178,76 @@ def process_contractnotes_folder(data_folder, *, start_date=None, end_date=None,
     return aggregate_df
 
 
+def process_financialledger_file(data_file, *, start_date=None, end_date=None, max_count=0):
+    count = 0
+    aggregate_df = None
+
+    fledger_df = pd.read_excel(data_file)
+    tradeentry_df = fledger_df[fledger_df['Voucher Type'] == 'Book Voucher']
+    # print(tradeentry_df)
+    # print(tradeentry_df.shape)
+
+    return tradeentry_df
+
+
+def reconcile_charges_and_ledger(ledger_df, charges_df):
+    # print(ledger_df)
+    # print(charges_df)
+
+    # We will do an outer join
+    merged_df = ledger_df.merge(charges_df, left_on='Posting Date', right_on='Date', how='outer')
+    print(merged_df)
+    return merged_df
+
+
+def find_unmatched(joined_df):
+    mismatch_df = joined_df[joined_df['Posting Date'] != joined_df['Date']]
+    print(mismatch_df)
+    return mismatch_df
+
+
 def pd_set_options():
     pd.set_option('display.max_columns', None)
     pd.set_option('display.width', 1000)
 
 
-
-def create_output(charges_df, output_folder):
+def create_output_file(charges_df, output_file_path):
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
-    output_file_path = os.path.join(output_folder, 'charges.csv')
 
     if charges_df is not None:
-        charges_df.to_csv(output_file_path)
+        charges_df.to_excel(output_file_path)
 
 
 pd_set_options()
-charges_aggregate_df = process_contractnotes_folder('data/ContractNotes/Zerodha', start_date="2022-04-01", end_date="2022-04-10")
+
+data_type = 'sample'
+
+output_folder = f'output/{data_type}'
 
 
-output_folder = 'output'
-create_output(charges_aggregate_df, output_folder)
+output_format = 'xlsx'
+charges_file_name = f'charges.{output_format}'
+charges_file_path = os.path.join(output_folder, charges_file_name)
+
+financialledger_file_path = f'data/{data_type}/FinancialLedger/Zerodha/Zerodha_FinancialLedger_Transactions.xlsx'
+contractnotes_folder = f'data/{data_type}/ContractNotes/Zerodha'
+
+start_date = "2022-04-01"
+if data_type == 'sample':
+    end_date = "2022-04-10"
+else:
+    end_date = "2022-04-15"
+
+tradeledger_df = process_financialledger_file(financialledger_file_path, start_date=start_date, end_date=end_date)
+
+if not os.path.exists(charges_file_path):
+    charges_aggregate_df = process_contractnotes_folder(contractnotes_folder, start_date=start_date, end_date=end_date)
+    create_output_file(charges_aggregate_df, charges_file_path)
+else:
+    charges_aggregate_df = pd.read_excel(charges_file_path)
+
+reconciled_df = reconcile_charges_and_ledger(tradeledger_df, charges_aggregate_df)
+
+print('Missing Entries')
+unmatched_df = find_unmatched(reconciled_df)
