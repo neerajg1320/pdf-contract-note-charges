@@ -127,7 +127,7 @@ def get_charges_aggregate_df_from_pdf(pdf_file_path, numeric_columns=None):
 
 
 debug_process = False
-def process_contractnotes_folder(data_folder, *, aggregate_file_path=None, date_column='Date', start_date=None, end_date=None, max_count=0):
+def process_contractnotes_folder(data_folder, *, aggregate_file_path=None, date_column='Date', numeric_columns=None, start_date=None, end_date=None, max_count=0, dry_run=False):
     count = 0
 
     aggregate_df = pd.DataFrame()
@@ -168,7 +168,7 @@ def process_contractnotes_folder(data_folder, *, aggregate_file_path=None, date_
             pdf_file_path = os.path.join(root, file)
 
             try:
-                charges_sum_df = get_charges_aggregate_df_from_pdf(pdf_file_path, numeric_columns=['Equity', 'Equity (T+1)', 'Futures and Options', 'NET TOTAL'])
+                charges_sum_df = get_charges_aggregate_df_from_pdf(pdf_file_path, numeric_columns=numeric_columns)
 
                 charges_sum_df['Date'] = date
                 charges_sum_df = charges_sum_df[['Date', 'Equity', 'Equity (T+1)', 'Futures and Options', 'NET TOTAL']]
@@ -188,15 +188,12 @@ def process_contractnotes_folder(data_folder, *, aggregate_file_path=None, date_
     if count > 0:
         # We convert the decimal columns to float
         aggregate_df[['Equity', 'Equity (T+1)', 'Futures and Options', 'NET TOTAL']] = aggregate_df[['Equity', 'Equity (T+1)', 'Futures and Options', 'NET TOTAL']].map(float)
-        create_output_file(aggregate_df, aggregate_file_path)
+        create_output_file(aggregate_df, aggregate_file_path, dry_run=dry_run)
 
     return aggregate_df
 
 
 def process_financialledger_file(data_file, *, start_date=None, end_date=None, max_count=0):
-    count = 0
-    aggregate_df = None
-
     fledger_df = pd.read_excel(data_file)
     tradeentry_df = fledger_df[fledger_df['Voucher Type'] == 'Book Voucher']
     # print(tradeentry_df)
@@ -205,18 +202,18 @@ def process_financialledger_file(data_file, *, start_date=None, end_date=None, m
     return tradeentry_df
 
 
-def reconcile_charges_and_ledger(ledger_df, charges_df):
+def reconcile_charges_and_ledger(ledger_df, charges_df, *, ledger_date_column='Date', charges_date_column='Date'):
     # print(ledger_df)
     # print(charges_df)
 
     # We will do an outer join
-    merged_df = ledger_df.merge(charges_df, left_on='Posting Date', right_on='Date', how='outer')
+    merged_df = ledger_df.merge(charges_df, left_on=ledger_date_column, right_on=charges_date_column, how='outer')
     # print(merged_df)
     return merged_df
 
 
-def find_unmatched(joined_df):
-    mismatch_df = joined_df[joined_df['Posting Date'] != joined_df['Date']]
+def find_unmatched(joined_df, *, ledger_date_column='Date', charges_date_column='Date'):
+    mismatch_df = joined_df[joined_df[ledger_date_column] != joined_df[charges_date_column]]
     # print(mismatch_df)
     return mismatch_df
 
@@ -236,13 +233,17 @@ def generate_report_from_unmatched(unmatched_df, *, on=None, left_on=None, right
                 print(f"Report '{right_report}' has missing entry for date {row[left_on]}")
 
 
-def create_output_file(charges_df, output_file_path):
+def create_output_file(charges_df, output_file_path, dry_run=False):
+    if dry_run:
+        return
+
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
 
-    if charges_df is not None:
-        # print(charges_df.map(type))
-        charges_df.to_excel(output_file_path)
+    if not dry_run:
+        if charges_df is not None:
+            # print(charges_df.map(type))
+            charges_df.to_excel(output_file_path)
 
 
 pd_set_options()
@@ -253,17 +254,21 @@ output_folder = f'output/{data_type}'
 
 
 output_format = 'xlsx'
-charges_file_name = f'charges.{output_format}'
-charges_file_path = os.path.join(output_folder, charges_file_name)
+
+account_provider_name = 'Zerodha'
 
 financialledger_file_path = f'data/{data_type}/FinancialLedger/Zerodha/Zerodha_FinancialLedger_Transactions.xlsx'
+financialledger_date_column = 'Posting Date'
 contractnotes_folder = f'data/{data_type}/ContractNotes/Zerodha'
 
-account_provider_name = "Zerodha"
+charges_file_name = f'charges.{output_format}'
+charges_file_path = os.path.join(output_folder, charges_file_name)
+charges_date_column = 'Date'
+
 
 charges_document_name = f'{account_provider_name} Charges Aggregate'
 financialledger_document_name = f'{account_provider_name} Financial Ledger'
-
+zerodha_numeric_columns = ['Equity', 'Equity (T+1)', 'Futures and Options', 'NET TOTAL']
 
 start_date = "2022-04-01"
 if data_type == 'sample':
@@ -271,16 +276,33 @@ if data_type == 'sample':
 else:
     end_date = "2023-04-01"
 
-tradeledger_df = process_financialledger_file(financialledger_file_path, start_date=start_date, end_date=end_date)
+tradeledger_df = process_financialledger_file(financialledger_file_path,
+                                              start_date=start_date,
+                                              end_date=end_date)
 
 # if not os.path.exists(charges_file_path):
-charges_aggregate_df = process_contractnotes_folder(contractnotes_folder, aggregate_file_path=charges_file_path, start_date=start_date, end_date=end_date)
+charges_aggregate_df = process_contractnotes_folder(contractnotes_folder,
+                                                    aggregate_file_path=charges_file_path,
+                                                    date_column=charges_date_column,
+                                                    numeric_columns=zerodha_numeric_columns,
+                                                    start_date=start_date,
+                                                    end_date=end_date,
+                                                    dry_run=True)
 
 
-reconciled_df = reconcile_charges_and_ledger(tradeledger_df, charges_aggregate_df)
+reconciled_df = reconcile_charges_and_ledger(tradeledger_df,
+                                             charges_aggregate_df,
+                                             ledger_date_column=financialledger_date_column,
+                                             charges_date_column=charges_date_column)
 
 print('Missing Entries')
-unmatched_df = find_unmatched(reconciled_df)
+unmatched_df = find_unmatched(reconciled_df,
+                              ledger_date_column=financialledger_date_column,
+                              charges_date_column=charges_date_column)
 
-generate_report_from_unmatched(unmatched_df, left_on='Posting Date', right_on='Date', left_report=financialledger_document_name, right_report=charges_document_name)
+generate_report_from_unmatched(unmatched_df,
+                               left_on=financialledger_date_column,
+                               right_on=charges_date_column,
+                               left_report=financialledger_document_name,
+                               right_report=charges_document_name)
 
