@@ -89,7 +89,7 @@ def get_pdf_number_of_pages(pdf_file_path):
     return len(reader.pages)
 
 
-def get_charges_aggregate_df_from_pdf(pdf_file_path):
+def get_charges_aggregate_df_from_pdf(pdf_file_path, numeric_columns=None):
     # print(pdf_file_path)
 
     num_pages = get_pdf_number_of_pages(pdf_file_path)
@@ -106,16 +106,16 @@ def get_charges_aggregate_df_from_pdf(pdf_file_path):
     if summary_df is None:
         raise Exception("Charges table not found")
 
-    process_columns = ['Equity', 'Equity (T+1)', 'Futures and Options', 'NET TOTAL']
+    # numeric_columns =
 
     summary_df = summary_df[['', 'Equity', 'Equity (T+1)', 'Futures and Options', 'NET TOTAL']]
 
     # print(summary_df)
     # print(summary_df.dtypes)
 
-    summary_df[process_columns] = process_dataframe(summary_df, columns=process_columns)
+    summary_df[numeric_columns] = process_dataframe(summary_df, columns=numeric_columns)
 
-    charges_df = pd.DataFrame(summary_df.values[1:-1, 1:], columns=process_columns)
+    charges_df = pd.DataFrame(summary_df.values[1:-1, 1:], columns=numeric_columns)
 
     # print(charges_df)
 
@@ -168,7 +168,7 @@ def process_contractnotes_folder(data_folder, *, aggregate_file_path=None, date_
             pdf_file_path = os.path.join(root, file)
 
             try:
-                charges_sum_df = get_charges_aggregate_df_from_pdf(pdf_file_path)
+                charges_sum_df = get_charges_aggregate_df_from_pdf(pdf_file_path, numeric_columns=['Equity', 'Equity (T+1)', 'Futures and Options', 'NET TOTAL'])
 
                 charges_sum_df['Date'] = date
                 charges_sum_df = charges_sum_df[['Date', 'Equity', 'Equity (T+1)', 'Futures and Options', 'NET TOTAL']]
@@ -247,7 +247,7 @@ def create_output_file(charges_df, output_file_path):
 
 pd_set_options()
 
-data_type = 'main'
+data_type = 'sample'
 
 output_folder = f'output/{data_type}'
 
@@ -274,7 +274,7 @@ else:
 tradeledger_df = process_financialledger_file(financialledger_file_path, start_date=start_date, end_date=end_date)
 
 # if not os.path.exists(charges_file_path):
-charges_aggregate_df = process_contractnotes_folder(contractnotes_folder, aggregate_file_path=charges_file_path, start_date=start_date, end_date=end_date, max_count=2)
+charges_aggregate_df = process_contractnotes_folder(contractnotes_folder, aggregate_file_path=charges_file_path, start_date=start_date, end_date=end_date)
 
 
 reconciled_df = reconcile_charges_and_ledger(tradeledger_df, charges_aggregate_df)
