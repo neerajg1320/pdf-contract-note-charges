@@ -127,9 +127,14 @@ def get_charges_aggregate_df_from_pdf(pdf_file_path):
 
 
 debug_process = False
-def process_contractnotes_folder(data_folder, *, start_date=None, end_date=None, max_count=0):
+def process_contractnotes_folder(data_folder, *, aggregate_file_path=None, date_column='Date', start_date=None, end_date=None, max_count=0):
     count = 0
-    aggregate_df = None
+
+    aggregate_df = pd.DataFrame()
+    if aggregate_file_path is not None:
+        if os.path.exists(aggregate_file_path):
+            aggregate_df = pd.read_excel(aggregate_file_path)
+
     for (root, dirs, files) in os.walk(data_folder):
         files.sort()
         for file in files:
@@ -155,6 +160,11 @@ def process_contractnotes_folder(data_folder, *, start_date=None, end_date=None,
                         print(f"date {date} is later than end_date {end_date}")
                     continue
 
+            # We ignore the files which are already present
+            if len(aggregate_df):
+                if len(aggregate_df[aggregate_df[date_column] == date]):
+                    continue
+
             pdf_file_path = os.path.join(root, file)
 
             try:
@@ -163,10 +173,10 @@ def process_contractnotes_folder(data_folder, *, start_date=None, end_date=None,
                 charges_sum_df['Date'] = date
                 charges_sum_df = charges_sum_df[['Date', 'Equity', 'Equity (T+1)', 'Futures and Options', 'NET TOTAL']]
 
-                if aggregate_df is None:
-                    aggregate_df = charges_sum_df
-                else:
-                    aggregate_df = pd.concat([aggregate_df, charges_sum_df], axis=0)
+                # if aggregate_df is None:
+                #     aggregate_df = charges_sum_df
+                # else:
+                aggregate_df = pd.concat([aggregate_df, charges_sum_df], axis=0)
                 count += 1
             except KeyError as e:
                 print(type(e).__name__, e)
@@ -174,6 +184,11 @@ def process_contractnotes_folder(data_folder, *, start_date=None, end_date=None,
 
     if aggregate_df is not None:
         print(aggregate_df)
+
+    if count > 0:
+        # We convert the decimal columns to float
+        aggregate_df[['Equity', 'Equity (T+1)', 'Futures and Options', 'NET TOTAL']] = aggregate_df[['Equity', 'Equity (T+1)', 'Futures and Options', 'NET TOTAL']].map(float)
+        create_output_file(aggregate_df, aggregate_file_path)
 
     return aggregate_df
 
@@ -214,13 +229,11 @@ def pd_set_options():
 def generate_report_from_unmatched(unmatched_df, *, on=None, left_on=None, right_on=None, left_report=None, right_report=None):
     if len(unmatched_df) > 0:
         for index,row in unmatched_df.iterrows():
-            # print(type(row))
-            # print(row)
-            print('left: ', row[left_on], type(row[left_on]), 'right: ', row[left_on], type(row[left_on]))
+            # We use the value for right in left and vice-versa since it is missing
             if pd.isna(row[left_on]):
-                print(f"{left_on} is missing in {left_report}")
+                print(f"Report '{left_report}' has missing entry for date {row[right_on]}")
             if pd.isna(row[right_on]):
-                print(f"{right_on} is missing in {right_report}")
+                print(f"Report '{right_report}' has missing entry for date {row[left_on]}")
 
 
 def create_output_file(charges_df, output_file_path):
@@ -228,6 +241,7 @@ def create_output_file(charges_df, output_file_path):
         os.makedirs(output_folder)
 
     if charges_df is not None:
+        # print(charges_df.map(type))
         charges_df.to_excel(output_file_path)
 
 
@@ -253,22 +267,20 @@ financialledger_document_name = f'{account_provider_name} Financial Ledger'
 
 start_date = "2022-04-01"
 if data_type == 'sample':
-    end_date = "2022-04-10"
+    end_date = "2023-01-31"
 else:
     end_date = "2023-04-01"
 
 tradeledger_df = process_financialledger_file(financialledger_file_path, start_date=start_date, end_date=end_date)
 
-if not os.path.exists(charges_file_path):
-    charges_aggregate_df = process_contractnotes_folder(contractnotes_folder, start_date=start_date, end_date=end_date)
-    create_output_file(charges_aggregate_df, charges_file_path)
-else:
-    charges_aggregate_df = pd.read_excel(charges_file_path)
+# if not os.path.exists(charges_file_path):
+charges_aggregate_df = process_contractnotes_folder(contractnotes_folder, aggregate_file_path=charges_file_path, start_date=start_date, end_date=end_date, max_count=2)
+
 
 reconciled_df = reconcile_charges_and_ledger(tradeledger_df, charges_aggregate_df)
 
 print('Missing Entries')
 unmatched_df = find_unmatched(reconciled_df)
 
-generate_report_from_unmatched(unmatched_df, left_on='Posting Date', right_on='Date', left_report=financialledger_document_name, right_report=financialledger_document_name)
+generate_report_from_unmatched(unmatched_df, left_on='Posting Date', right_on='Date', left_report=financialledger_document_name, right_report=charges_document_name)
 
