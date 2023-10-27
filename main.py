@@ -189,7 +189,7 @@ def process_contractnotes_folder(data_folder, *, aggregate_file_path=None, date_
 
     if count > 0:
         # We convert the decimal columns to float
-        aggregate_df[['Equity', 'Equity (T+1)', 'Futures and Options', 'NET TOTAL']] = aggregate_df[['Equity', 'Equity (T+1)', 'Futures and Options', 'NET TOTAL']].map(float)
+        aggregate_df[numeric_columns] = aggregate_df[numeric_columns].map(float)
         create_output_file(aggregate_df, aggregate_file_path, dry_run=dry_run)
 
     return aggregate_df
@@ -289,7 +289,7 @@ charges_aggregate_df = process_contractnotes_folder(contractnotes_folder,
                                                     numeric_columns=zerodha_numeric_columns,
                                                     start_date=start_date,
                                                     end_date=end_date,
-                                                    dry_run=True)
+                                                    dry_run=False)
 
 
 reconciled_df = reconcile_charges_and_ledger(tradeledger_df,
