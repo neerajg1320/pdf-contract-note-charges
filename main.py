@@ -106,9 +106,10 @@ def get_charges_aggregate_df_from_pdf(pdf_file_path, numeric_columns=None):
     if summary_df is None:
         raise Exception("Charges table not found")
 
-    # numeric_columns =
+    summary_columns = ['']
+    summary_columns.extend(numeric_columns)
 
-    summary_df = summary_df[['', 'Equity', 'Equity (T+1)', 'Futures and Options', 'NET TOTAL']]
+    summary_df = summary_df[summary_columns]
 
     # print(summary_df)
     # print(summary_df.dtypes)
@@ -171,11 +172,12 @@ def process_contractnotes_folder(data_folder, *, aggregate_file_path=None, date_
                 charges_sum_df = get_charges_aggregate_df_from_pdf(pdf_file_path, numeric_columns=numeric_columns)
 
                 charges_sum_df['Date'] = date
-                charges_sum_df = charges_sum_df[['Date', 'Equity', 'Equity (T+1)', 'Futures and Options', 'NET TOTAL']]
 
-                # if aggregate_df is None:
-                #     aggregate_df = charges_sum_df
-                # else:
+                charges_columns = [date_column]
+                charges_columns.extend(numeric_columns)
+
+                charges_sum_df = charges_sum_df[charges_columns]
+
                 aggregate_df = pd.concat([aggregate_df, charges_sum_df], axis=0)
                 count += 1
             except KeyError as e:
