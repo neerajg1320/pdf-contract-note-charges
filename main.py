@@ -1,13 +1,28 @@
 import os
 import camelot
+from pypdf import PdfReader
 import pandas as pd
 import numpy as np
 from decimal import Decimal, InvalidOperation
 import re
 
 
+
+whitespace_regex = r"^\s*$"
+bracketed_number_regex = r"^\(([\d.,]*)\)"
+date_regex = r"\d{4}-\d{2}-\d{2}"
+
+
+def get_date_from_string(input_str):
+    match = re.search(date_regex, input_str)
+    if match is not None:
+        return match.group(0)
+    return None
+
+
 def get_dataframe_from_camelot_table(table):
     header_row = table.df.iloc[0]
+    header_row = header_row.map(lambda cell: cell.replace("\n", " "))
     df_with_column_headers = pd.DataFrame(table.df.values[1:], columns=header_row)
     # print(df_with_column_headers)
     return df_with_column_headers
@@ -17,7 +32,7 @@ def get_charges_dataframe(tables):
     match_df = None
     for table in tables:
         df = get_dataframe_from_camelot_table(table)
-        if df.shape == (11, 5):
+        if df.shape == (11, 5) or df.shape == (11, 4):
             match_df = df
 
     return match_df
@@ -26,12 +41,10 @@ def get_charges_dataframe(tables):
 def get_decimal_or_blank_value(cell):
     value = np.NaN
 
-    whitespace_regex = r"^\s*$"
     whitespace_match = re.match(whitespace_regex, cell)
     if whitespace_match is not None:
         value = 0
     else:
-        bracketed_number_regex = r"^\(([\d.,]*)\)"
         match = re.match(bracketed_number_regex, cell)
 
         try:
@@ -71,20 +84,34 @@ def process_dataframe(input_df, columns=None):
     return df
 
 
+def get_pdf_number_of_pages(pdf_file_path):
+    reader = PdfReader(pdf_file_path)
+    return len(reader.pages)
+
+
 def get_charges_aggregate_df_from_pdf(pdf_file_path):
-    print(pdf_file_path)
-    tables = camelot.read_pdf(pdf_file_path, pages="all")
-    print(f"  Tables detected {len(tables)}")
+    # print(pdf_file_path)
+
+    num_pages = get_pdf_number_of_pages(pdf_file_path)
+    # print(f"{pdf_file_path}: Number of pages:", num_pages)
+
+    last_two_pages = f"{num_pages-1},{num_pages}"
+    tables = camelot.read_pdf(pdf_file_path, pages=last_two_pages)
+    print(f"{pdf_file_path}:  {len(tables)} Tables detected on pages:{last_two_pages} ")
 
     summary_df = get_charges_dataframe(tables)
+    if summary_df.shape[1] == 4:
+        summary_df['Equity (T+1)'] = ""
 
     if summary_df is None:
         raise Exception("Charges table not found")
 
+    process_columns = ['Equity', 'Equity (T+1)', 'Futures and Options', 'NET TOTAL']
+
+    summary_df = summary_df[['', 'Equity', 'Equity (T+1)', 'Futures and Options', 'NET TOTAL']]
+
     # print(summary_df)
     # print(summary_df.dtypes)
-    process_columns = ['Equity', 'Equity (T+1)', 'Futures and Options', 'NET TOTAL']
-    # process_columns = ['NET TOTAL']
 
     summary_df[process_columns] = process_dataframe(summary_df, columns=process_columns)
 
@@ -94,30 +121,61 @@ def get_charges_aggregate_df_from_pdf(pdf_file_path):
 
     sum_series = charges_df.sum()
     sum_df = sum_series.to_frame().transpose()
-    print( sum_df)
+    print(sum_df)
 
     return sum_df
 
 
-def process_data(data_folder, max_count=0):
+debug_process = False
+def process_contractnotes_folder(data_folder, *, start_date=None, end_date=None, max_count=0):
     count = 0
     aggregate_df = None
     for (root, dirs, files) in os.walk(data_folder):
-        ordered_files = files.sort()
+        files.sort()
         for file in files:
             if max_count > 0 and count >= max_count:
                 print(f"Max count {max_count} reached")
                 break
-            else:
-                charges_sum_df = get_charges_aggregate_df_from_pdf(os.path.join(root, file))
+
+            date = get_date_from_string(file)
+            if date is None:
+                if debug_process:
+                    print(f"Could not find date in file '{file}'")
+                continue
+
+            if start_date:
+                if date < start_date:
+                    if debug_process:
+                        print(f"date {date} is earlier than start_date {start_date}")
+                    continue
+
+            if end_date:
+                if date >= end_date:
+                    if debug_process:
+                        print(f"date {date} is later than end_date {end_date}")
+                    continue
+
+            pdf_file_path = os.path.join(root, file)
+
+            try:
+                charges_sum_df = get_charges_aggregate_df_from_pdf(pdf_file_path)
+                
+                charges_sum_df['Date'] = date
+                charges_sum_df = charges_sum_df[['Date', 'Equity', 'Equity (T+1)', 'Futures and Options', 'NET TOTAL']]
+
                 if aggregate_df is None:
                     aggregate_df = charges_sum_df
                 else:
                     aggregate_df = pd.concat([aggregate_df, charges_sum_df], axis=0)
                 count += 1
+            except KeyError as e:
+                print(type(e).__name__, e)
+                # print(f"Error processing contract note for date {date}")
 
     if aggregate_df is not None:
         print(aggregate_df)
+
+    return aggregate_df
 
 
 def pd_set_options():
@@ -125,5 +183,19 @@ def pd_set_options():
     pd.set_option('display.width', 1000)
 
 
+
+def create_output(charges_df, output_folder):
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+    output_file_path = os.path.join(output_folder, 'charges.csv')
+
+    if charges_df is not None:
+        charges_df.to_csv(output_file_path)
+
+
 pd_set_options()
-process_data('data', 0)
+charges_aggregate_df = process_contractnotes_folder('data/ContractNotes/Zerodha', start_date="2022-04-01", end_date="2022-04-10")
+
+
+output_folder = 'output'
+create_output(charges_aggregate_df, output_folder)
