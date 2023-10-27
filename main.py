@@ -196,19 +196,31 @@ def reconcile_charges_and_ledger(ledger_df, charges_df):
 
     # We will do an outer join
     merged_df = ledger_df.merge(charges_df, left_on='Posting Date', right_on='Date', how='outer')
-    print(merged_df)
+    # print(merged_df)
     return merged_df
 
 
 def find_unmatched(joined_df):
     mismatch_df = joined_df[joined_df['Posting Date'] != joined_df['Date']]
-    print(mismatch_df)
+    # print(mismatch_df)
     return mismatch_df
 
 
 def pd_set_options():
     pd.set_option('display.max_columns', None)
     pd.set_option('display.width', 1000)
+
+
+def generate_report_from_unmatched(unmatched_df, *, on=None, left_on=None, right_on=None, left_report=None, right_report=None):
+    if len(unmatched_df) > 0:
+        for index,row in unmatched_df.iterrows():
+            # print(type(row))
+            # print(row)
+            print('left: ', row[left_on], type(row[left_on]), 'right: ', row[left_on], type(row[left_on]))
+            if pd.isna(row[left_on]):
+                print(f"{left_on} is missing in {left_report}")
+            if pd.isna(row[right_on]):
+                print(f"{right_on} is missing in {right_report}")
 
 
 def create_output_file(charges_df, output_file_path):
@@ -221,7 +233,7 @@ def create_output_file(charges_df, output_file_path):
 
 pd_set_options()
 
-data_type = 'sample'
+data_type = 'main'
 
 output_folder = f'output/{data_type}'
 
@@ -233,11 +245,17 @@ charges_file_path = os.path.join(output_folder, charges_file_name)
 financialledger_file_path = f'data/{data_type}/FinancialLedger/Zerodha/Zerodha_FinancialLedger_Transactions.xlsx'
 contractnotes_folder = f'data/{data_type}/ContractNotes/Zerodha'
 
+account_provider_name = "Zerodha"
+
+charges_document_name = f'{account_provider_name} Charges Aggregate'
+financialledger_document_name = f'{account_provider_name} Financial Ledger'
+
+
 start_date = "2022-04-01"
 if data_type == 'sample':
     end_date = "2022-04-10"
 else:
-    end_date = "2022-04-15"
+    end_date = "2023-04-01"
 
 tradeledger_df = process_financialledger_file(financialledger_file_path, start_date=start_date, end_date=end_date)
 
@@ -251,3 +269,6 @@ reconciled_df = reconcile_charges_and_ledger(tradeledger_df, charges_aggregate_d
 
 print('Missing Entries')
 unmatched_df = find_unmatched(reconciled_df)
+
+generate_report_from_unmatched(unmatched_df, left_on='Posting Date', right_on='Date', left_report=financialledger_document_name, right_report=financialledger_document_name)
+
