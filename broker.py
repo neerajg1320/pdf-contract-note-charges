@@ -290,3 +290,19 @@ class Broker(Provider):
                                                             start_date=start_date,
                                                             end_date=end_date,
                                                             dry_run=True)
+
+        reconciled_df = reconcile_charges_and_ledger(tradeledger_df,
+                                                     charges_aggregate_df,
+                                                     ledger_date_column=self.fledger_date_column,
+                                                     charges_date_column=self.charges_date_column)
+
+        print('Missing Entries')
+        unmatched_df = find_unmatched(reconciled_df,
+                                      ledger_date_column=self.fledger_date_column,
+                                      charges_date_column=self.charges_date_column)
+
+        generate_report_from_unmatched(unmatched_df,
+                                       left_on=self.fledger_date_column,
+                                       right_on=self.charges_date_column,
+                                       left_report=financialledger_document_name,
+                                       right_report=charges_document_name)
