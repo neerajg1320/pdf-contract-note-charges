@@ -88,7 +88,7 @@ def get_pdf_number_of_pages(pdf_file_path):
     return len(reader.pages)
 
 
-def get_charges_aggregate_df_from_pdf(pdf_file_path, numeric_columns=None, charges_match_func=None):
+def get_charges_aggregate_df_from_pdf(pdf_file_path, numeric_columns=None, charges_match_func=None, charges_post_process_func=None):
     if pdf_file_path is None:
         raise RuntimeError(f"pdf_file_path is not provided")
 
@@ -109,8 +109,12 @@ def get_charges_aggregate_df_from_pdf(pdf_file_path, numeric_columns=None, charg
 
     summary_df = get_charges_dataframe(tables, charges_match_func)
 
-    if summary_df.shape[1] == 4:
-        summary_df['Equity (T+1)'] = ""
+    # Carve out
+    # if summary_df.shape[1] == 4:
+    #     summary_df['Equity (T+1)'] = ""
+
+    if charges_post_process_func is not None:
+        summary_df = charges_post_process_func(summary_df)
 
     if summary_df is None:
         raise Exception("Charges table not found")
@@ -137,7 +141,16 @@ def get_charges_aggregate_df_from_pdf(pdf_file_path, numeric_columns=None, charg
 
 
 debug_process = False
-def process_contractnotes_folder(cnotes_folder_path, *, charges_aggregate_file_path=None, charges_match_func=None, date_column='Date', numeric_columns=None, start_date=None, end_date=None, max_count=0, dry_run=False):
+def process_contractnotes_folder(cnotes_folder_path, *,
+                                 charges_aggregate_file_path=None,
+                                 charges_match_func=None,
+                                 charges_post_process_func=None,
+                                 date_column='Date',
+                                 numeric_columns=None,
+                                 start_date=None,
+                                 end_date=None,
+                                 max_count=0,
+                                 dry_run=False):
     if not os.path.exists(cnotes_folder_path):
         raise RuntimeError(f"folder '{cnotes_folder_path}' does not exist")
 
@@ -187,7 +200,9 @@ def process_contractnotes_folder(cnotes_folder_path, *, charges_aggregate_file_p
             try:
                 charges_sum_df = get_charges_aggregate_df_from_pdf(pdf_file_path,
                                                                    numeric_columns=numeric_columns,
-                                                                   charges_match_func=charges_match_func)
+                                                                   charges_match_func=charges_match_func,
+                                                                   charges_post_process_func=charges_post_process_func
+                                                                   )
 
                 charges_sum_df['Date'] = date
 
@@ -283,12 +298,14 @@ class Broker(Provider):
                  fledger_date_column='Date',
                  charges_date_column='Date',
                  charges_numeric_columns=None,
-                 charges_match_func=None):
+                 charges_match_func=None,
+                 charges_post_process_func=None):
         super(Broker, self).__init__(name, "Broker")
         self.fledger_path = os.path.join(input_path_prefix, f'FinancialLedger/{self.name}/{self.name}_FinancialLedger_Transactions.xlsx')
         self.cnote_folder_path = os.path.join(input_path_prefix, f'ContractNotes/{self.name}')
         self.charges_file_path = os.path.join(compute_path_prefix, self.name, f'charges.{self.output_format}')
         self.charges_match_func = charges_match_func
+        self.charges_post_process_func = charges_post_process_func
         self.fledger_date_column = fledger_date_column
         self.charges_date_column = charges_date_column
         self.charges_numeric_columns = charges_numeric_columns
