@@ -5,17 +5,29 @@ import pandas as pd
 import numpy as np
 from decimal import Decimal, InvalidOperation
 import re
+from datetime import datetime
 
 whitespace_regex = r"^\s*$"
 bracketed_number_regex = r"^\(([\d.,]*)\)"
-date_regex = r"\d{4}-\d{2}-\d{2}"
+date_regex_list = [
+    (r"(\d{4}-\d{2}-\d{2})","%Y-%m-%d"),
+]
+
+
+def convert_datestr_to_isostr(datestr, format):
+    date = datetime.strptime(datestr, format)
+    return date.strftime("%Y-%m-%d")
 
 
 def get_date_from_string(input_str):
-    match = re.search(date_regex, input_str)
-    if match is not None:
-        return match.group(0)
-    return None
+    iso_str = None
+    for (date_regex, date_format) in date_regex_list:
+        match = re.search(date_regex, input_str)
+        if match is not None:
+            date_str = match.group(1)
+            iso_str = convert_datestr_to_isostr(date_str, date_format)
+
+    return iso_str
 
 
 def get_dataframe_from_camelot_table(table):
@@ -136,7 +148,8 @@ def get_charges_aggregate_df_from_pdf(pdf_file_path, numeric_columns=None, charg
     return sum_df
 
 
-debug_process = False
+debug_process = True
+
 def process_contractnotes_folder(cnotes_folder_path, *,
                                  charges_aggregate_file_path=None,
                                  charges_match_func=None,
@@ -168,6 +181,7 @@ def process_contractnotes_folder(cnotes_folder_path, *,
                 print(f"Max count {max_count} reached")
                 break
 
+            # We could have a custom function here
             date = get_date_from_string(file)
             if date is None:
                 if debug_process:
@@ -318,7 +332,7 @@ class Broker(Provider):
                                                            post_process_func=self.fledger_post_process_func,
                                                            start_date=start_date,
                                                            end_date=end_date)
-        print(self.tradeledger_df)
+        # print(self.tradeledger_df)
 
     def read_contract_notes(self, start_date=None, end_date=None, dry_run=False):
         self.charges_aggregate_df = process_contractnotes_folder(self.cnote_folder_path,
