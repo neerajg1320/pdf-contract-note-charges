@@ -26,16 +26,6 @@ def get_dataframe_from_camelot_table(table):
     return df_with_column_headers
 
 
-def get_charges_dataframe(tables):
-    match_df = None
-    for table in tables:
-        df = get_dataframe_from_camelot_table(table)
-        if df.shape == (11, 5) or df.shape == (11, 4):
-            match_df = df
-
-    return match_df
-
-
 def get_decimal_or_blank_value(cell):
     value = np.NaN
 
@@ -69,15 +59,26 @@ def convert_to_decimal(cell, ignore=False):
     return new_cell
 
 
+def get_charges_dataframe(tables, match_func):
+    if match_func is None:
+        raise RuntimeError("match_func parameter is mandatory")
+
+    match_df = None
+    for table in tables:
+        df = get_dataframe_from_camelot_table(table)
+        if match_func(df):
+            match_df = df
+
+    return match_df
+
+
+
 def process_dataframe(input_df, columns=None):
     df = input_df
     if columns is not None:
         df = df[columns]
 
-    # print(df)
     df = df.map(get_decimal_or_blank_value)
-    # df = df.map(convert_to_decimal)
-    # print(df)
 
     return df
 
@@ -87,7 +88,16 @@ def get_pdf_number_of_pages(pdf_file_path):
     return len(reader.pages)
 
 
-def get_charges_aggregate_df_from_pdf(pdf_file_path, numeric_columns=None):
+def get_charges_aggregate_df_from_pdf(pdf_file_path, numeric_columns=None, charges_match_func=None):
+    if pdf_file_path is None:
+        raise RuntimeError(f"pdf_file_path is not provided")
+
+    if numeric_columns is None:
+        raise RuntimeError(f"numeric_columns is not provided")
+
+    if charges_match_func is None:
+        raise RuntimeError(f"charges_match_func is not provided")
+
     # print(pdf_file_path)
 
     num_pages = get_pdf_number_of_pages(pdf_file_path)
@@ -97,7 +107,8 @@ def get_charges_aggregate_df_from_pdf(pdf_file_path, numeric_columns=None):
     tables = camelot.read_pdf(pdf_file_path, pages=last_two_pages)
     print(f"{pdf_file_path}:  {len(tables)} Tables detected on pages:{last_two_pages} ")
 
-    summary_df = get_charges_dataframe(tables)
+    summary_df = get_charges_dataframe(tables, charges_match_func)
+
     if summary_df.shape[1] == 4:
         summary_df['Equity (T+1)'] = ""
 
@@ -126,7 +137,7 @@ def get_charges_aggregate_df_from_pdf(pdf_file_path, numeric_columns=None):
 
 
 debug_process = False
-def process_contractnotes_folder(cnotes_folder_path, *, charges_aggregate_file_path=None, date_column='Date', numeric_columns=None, start_date=None, end_date=None, max_count=0, dry_run=False):
+def process_contractnotes_folder(cnotes_folder_path, *, charges_aggregate_file_path=None, charges_match_func=None, date_column='Date', numeric_columns=None, start_date=None, end_date=None, max_count=0, dry_run=False):
     if not os.path.exists(cnotes_folder_path):
         raise RuntimeError(f"folder '{cnotes_folder_path}' does not exist")
 
@@ -174,7 +185,9 @@ def process_contractnotes_folder(cnotes_folder_path, *, charges_aggregate_file_p
             pdf_file_path = os.path.join(root, file)
 
             try:
-                charges_sum_df = get_charges_aggregate_df_from_pdf(pdf_file_path, numeric_columns=numeric_columns)
+                charges_sum_df = get_charges_aggregate_df_from_pdf(pdf_file_path,
+                                                                   numeric_columns=numeric_columns,
+                                                                   charges_match_func=charges_match_func)
 
                 charges_sum_df['Date'] = date
 
@@ -269,11 +282,13 @@ class Broker(Provider):
                  compute_path_prefix='compute',
                  fledger_date_column='Date',
                  charges_date_column='Date',
-                 charges_numeric_columns=None):
+                 charges_numeric_columns=None,
+                 charges_match_func=None):
         super(Broker, self).__init__(name, "Broker")
         self.fledger_path = os.path.join(input_path_prefix, f'FinancialLedger/{self.name}/{self.name}_FinancialLedger_Transactions.xlsx')
         self.cnote_folder_path = os.path.join(input_path_prefix, f'ContractNotes/{self.name}')
         self.charges_file_path = os.path.join(compute_path_prefix, self.name, f'charges.{self.output_format}')
+        self.charges_match_func = charges_match_func
         self.fledger_date_column = fledger_date_column
         self.charges_date_column = charges_date_column
         self.charges_numeric_columns = charges_numeric_columns
@@ -293,6 +308,7 @@ class Broker(Provider):
 
         self.charges_aggregate_df = process_contractnotes_folder(self.cnote_folder_path,
                                                                  charges_aggregate_file_path=self.charges_file_path,
+                                                                 charges_match_func=self.charges_match_func,
                                                                  date_column=self.charges_date_column,
                                                                  numeric_columns=self.charges_numeric_columns,
                                                                  start_date=start_date,
