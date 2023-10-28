@@ -2,7 +2,7 @@ from broker import *
 
 pd_set_options()
 
-data_type = 'sample'
+data_type = 'main'
 
 start_date = "2022-04-01"
 if data_type == 'sample':
@@ -17,6 +17,7 @@ def zerodha_match_charges_dataframe(df):
 
 def zerodha_post_process_charges_dataframe(df):
     if df.shape[1] == 4:
+        print("Fixed the df")
         df['Equity (T+1)'] = ""
     return df
 
@@ -31,5 +32,5 @@ zerodha_broker = Broker('Zerodha',
                         charges_post_process_func=zerodha_post_process_charges_dataframe
                         )
 
-zerodha_broker.compute(start_date=start_date, end_date=end_date, dry_run=True)
+zerodha_broker.compute(start_date=start_date, end_date=end_date, dry_run=False)
 

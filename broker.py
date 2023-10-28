@@ -109,10 +109,6 @@ def get_charges_aggregate_df_from_pdf(pdf_file_path, numeric_columns=None, charg
 
     summary_df = get_charges_dataframe(tables, charges_match_func)
 
-    # Carve out
-    # if summary_df.shape[1] == 4:
-    #     summary_df['Equity (T+1)'] = ""
-
     if charges_post_process_func is not None:
         summary_df = charges_post_process_func(summary_df)
 
@@ -162,7 +158,7 @@ def process_contractnotes_folder(cnotes_folder_path, *,
             print(f"Reading charges aggregate file '{charges_aggregate_file_path}'")
             aggregate_df = pd.read_excel(charges_aggregate_file_path)
         else:
-            raise RuntimeError(f"Charges aggregate file '{charges_aggregate_file_path}' does not exist")
+            aggregate_df = pd.DataFrame()
 
     print(f"Traversing contract notes folder '{cnotes_folder_path}'")
     for (root, dirs, files) in os.walk(cnotes_folder_path):
@@ -326,6 +322,7 @@ class Broker(Provider):
         self.charges_aggregate_df = process_contractnotes_folder(self.cnote_folder_path,
                                                                  charges_aggregate_file_path=self.charges_file_path,
                                                                  charges_match_func=self.charges_match_func,
+                                                                 charges_post_process_func=self.charges_post_process_func,
                                                                  date_column=self.charges_date_column,
                                                                  numeric_columns=self.charges_numeric_columns,
                                                                  start_date=start_date,
