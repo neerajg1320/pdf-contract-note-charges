@@ -126,9 +126,9 @@ def get_charges_aggregate_df_from_pdf(pdf_file_path, numeric_columns=None):
 
 
 debug_process = False
-def process_contractnotes_folder(data_folder_path, *, charges_aggregate_file_path=None, date_column='Date', numeric_columns=None, start_date=None, end_date=None, max_count=0, dry_run=False):
-    if not os.path.exists(data_folder_path):
-        raise RuntimeError(f"folder '{data_folder_path}' does not exist")
+def process_contractnotes_folder(cnotes_folder_path, *, charges_aggregate_file_path=None, date_column='Date', numeric_columns=None, start_date=None, end_date=None, max_count=0, dry_run=False):
+    if not os.path.exists(cnotes_folder_path):
+        raise RuntimeError(f"folder '{cnotes_folder_path}' does not exist")
 
     count = 0
 
@@ -140,7 +140,8 @@ def process_contractnotes_folder(data_folder_path, *, charges_aggregate_file_pat
         else:
             raise RuntimeError(f"Charges aggregate file '{charges_aggregate_file_path}' does not exist")
 
-    for (root, dirs, files) in os.walk(data_folder_path):
+    print(f"Traversing contract notes folder '{cnotes_folder_path}'")
+    for (root, dirs, files) in os.walk(cnotes_folder_path):
         files.sort()
         for file in files:
             if max_count > 0 and count >= max_count:
