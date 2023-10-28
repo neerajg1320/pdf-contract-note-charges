@@ -10,11 +10,17 @@ from datetime import datetime
 whitespace_regex = r"^\s*$"
 bracketed_number_regex = r"^\(([\d.,]*)\)"
 date_regex_list = [
+    # Zerodha
     (r"(\d{4}-\d{2}-\d{2})","%Y-%m-%d"),
+    # Axisdirect
+    (r"(\d{8})\.","%d%m%Y"),
 ]
 
 
 def convert_datestr_to_isostr(datestr, format):
+    if not isinstance(datestr, str):
+        return datestr
+
     date = datetime.strptime(datestr, format)
     return date.strftime("%Y-%m-%d")
 
@@ -26,6 +32,7 @@ def get_date_from_string(input_str):
         if match is not None:
             date_str = match.group(1)
             iso_str = convert_datestr_to_isostr(date_str, date_format)
+            break
 
     return iso_str
 
@@ -53,7 +60,7 @@ def get_decimal_or_blank_value(cell):
             else:
                 value = Decimal(cell)
         except InvalidOperation as e:
-            print(e)
+            print(type(e).__name__, f"Error! cant convert {cell} to decimal")
 
     return value
 
@@ -71,7 +78,7 @@ def convert_to_decimal(cell, ignore=False):
     return new_cell
 
 
-def get_charges_dataframe(tables, match_func):
+def get_summary_dataframe(tables, match_func):
     if match_func is None:
         raise RuntimeError("match_func parameter is mandatory")
 
@@ -80,19 +87,9 @@ def get_charges_dataframe(tables, match_func):
         df = get_dataframe_from_camelot_table(table)
         if match_func(df):
             match_df = df
+            break
 
     return match_df
-
-
-
-def process_dataframe(input_df, columns=None):
-    df = input_df
-    if columns is not None:
-        df = df[columns]
-
-    df = df.map(get_decimal_or_blank_value)
-
-    return df
 
 
 def get_pdf_number_of_pages(pdf_file_path):
@@ -100,62 +97,61 @@ def get_pdf_number_of_pages(pdf_file_path):
     return len(reader.pages)
 
 
-def get_charges_aggregate_df_from_pdf(pdf_file_path, numeric_columns=None, charges_match_func=None, charges_post_process_func=None):
+def get_charges_aggregate_df_from_pdf(pdf_file_path,
+                                      numeric_columns=None,
+                                      summary_match_func=None,
+                                      summary_post_process_func=None
+                                      ):
     if pdf_file_path is None:
         raise RuntimeError(f"pdf_file_path is not provided")
 
     if numeric_columns is None:
         raise RuntimeError(f"numeric_columns is not provided")
 
-    if charges_match_func is None:
+    if summary_match_func is None:
         raise RuntimeError(f"charges_match_func is not provided")
+
+    if summary_post_process_func is None:
+        raise RuntimeError(f"summary_post_process_func is not provided")
 
     # print(pdf_file_path)
 
     num_pages = get_pdf_number_of_pages(pdf_file_path)
     # print(f"{pdf_file_path}: Number of pages:", num_pages)
 
-    last_two_pages = f"{num_pages-1},{num_pages}"
-    tables = camelot.read_pdf(pdf_file_path, pages=last_two_pages)
-    print(f"{pdf_file_path}:  {len(tables)} Tables detected on pages:{last_two_pages} ")
+    # TBD: To make configurable
+    # last_pages = f"{num_pages-1},{num_pages}"
+    last_pages = f"{num_pages-3},{num_pages-2},{num_pages-1},{num_pages}"
 
-    summary_df = get_charges_dataframe(tables, charges_match_func)
+    tables = camelot.read_pdf(pdf_file_path, pages=last_pages)
+    print(f"{pdf_file_path}:  {len(tables)} Tables detected on pages:{last_pages} ")
 
-    if charges_post_process_func is not None:
-        summary_df = charges_post_process_func(summary_df)
-
+    summary_df = get_summary_dataframe(tables, summary_match_func)
     if summary_df is None:
-        raise Exception("Charges table not found")
+        raise RuntimeError(f"Summary table not found in file '{pdf_file_path}'")
 
-    summary_columns = ['']
-    summary_columns.extend(numeric_columns)
+    if summary_post_process_func is not None:
+        charges_df = summary_post_process_func(summary_df)
 
-    summary_df = summary_df[summary_columns]
+        sum_series = charges_df.sum()
+        charges_sum_df = sum_series.to_frame().transpose()
+        print("Charges Sum Dataframe:", charges_sum_df)
 
-    # print(summary_df)
-    # print(summary_df.dtypes)
+        return charges_sum_df
 
-    summary_df[numeric_columns] = process_dataframe(summary_df, columns=numeric_columns)
-
-    charges_df = pd.DataFrame(summary_df.values[1:-1, 1:], columns=numeric_columns)
-
-    # print(charges_df)
-
-    sum_series = charges_df.sum()
-    sum_df = sum_series.to_frame().transpose()
-    print(sum_df)
-
-    return sum_df
+    return pd.DataFrame()
 
 
 debug_process = True
 
+
 def process_contractnotes_folder(cnotes_folder_path, *,
                                  charges_aggregate_file_path=None,
-                                 charges_match_func=None,
-                                 charges_post_process_func=None,
+                                 summary_match_func=None,
+                                 summary_post_process_func=None,
                                  date_column='Date',
                                  numeric_columns=None,
+                                 all_columns=None,
                                  start_date=None,
                                  end_date=None,
                                  max_count=0,
@@ -207,25 +203,23 @@ def process_contractnotes_folder(cnotes_folder_path, *,
 
             pdf_file_path = os.path.join(root, file)
 
-            try:
-                charges_sum_df = get_charges_aggregate_df_from_pdf(pdf_file_path,
-                                                                   numeric_columns=numeric_columns,
-                                                                   charges_match_func=charges_match_func,
-                                                                   charges_post_process_func=charges_post_process_func
-                                                                   )
+            charges_sum_df = get_charges_aggregate_df_from_pdf(pdf_file_path,
+                                                               numeric_columns=numeric_columns,
+                                                               summary_match_func=summary_match_func,
+                                                               summary_post_process_func=summary_post_process_func
+                                                               )
 
-                charges_sum_df['Date'] = date
+            charges_sum_df['Date'] = date
 
-                charges_columns = [date_column]
-                charges_columns.extend(numeric_columns)
+            charges_columns = [date_column]
+            charges_columns.extend(numeric_columns)
 
-                charges_sum_df = charges_sum_df[charges_columns]
+            charges_sum_df = charges_sum_df[charges_columns]
 
-                aggregate_df = pd.concat([aggregate_df, charges_sum_df], axis=0)
-                count += 1
-            except KeyError as e:
-                print(type(e).__name__, e)
-                # print(f"Error processing contract note for date {date}")
+            aggregate_df = pd.concat([aggregate_df, charges_sum_df], axis=0)
+            count += 1
+
+            # print(f"Error processing contract note for date {date}")
 
     if aggregate_df is not None:
         print(aggregate_df)
@@ -238,9 +232,13 @@ def process_contractnotes_folder(cnotes_folder_path, *,
     return aggregate_df
 
 
-def process_financialledger_file(data_file, *, post_process_func=None, start_date=None, end_date=None, max_count=0):
+def process_financialledger_file(data_file, *, date_column='Date', date_format=None, post_process_func=None, start_date=None, end_date=None, max_count=0):
     fledger_df = pd.read_excel(data_file)
     # tradeentry_df = fledger_df[fledger_df['Voucher Type'] == 'Book Voucher']
+    if date_format is not None:
+        fledger_df[date_column] = fledger_df[date_column].map(lambda x: convert_datestr_to_isostr(x, date_format) )
+        print(f"We need to process date")
+
     if post_process_func is not None:
         fledger_df = post_process_func(fledger_df)
 
@@ -306,21 +304,25 @@ class Broker(Provider):
                  input_path_prefix='data',
                  compute_path_prefix='compute',
                  fledger_date_column='Date',
+                 fledger_date_format=None,
                  fledger_post_process_func=None,
                  charges_date_column='Date',
                  charges_numeric_columns=None,
-                 charges_match_func=None,
-                 charges_post_process_func=None):
+                 all_columns=None,
+                 summary_match_func=None,
+                 summary_post_process_func=None):
         super(Broker, self).__init__(name, "Broker")
         self.fledger_path = os.path.join(input_path_prefix, f'FinancialLedger/{self.name}/{self.name}_FinancialLedger_Transactions.xlsx')
         self.cnote_folder_path = os.path.join(input_path_prefix, f'ContractNotes/{self.name}')
         self.charges_file_path = os.path.join(compute_path_prefix, self.name, f'charges.{self.output_format}')
-        self.charges_match_func = charges_match_func
-        self.charges_post_process_func = charges_post_process_func
+        self.summary_match_func = summary_match_func
+        self.summary_post_process_func = summary_post_process_func
         self.fledger_post_process_func = fledger_post_process_func
         self.fledger_date_column = fledger_date_column
+        self.fledger_date_format = fledger_date_format
         self.charges_date_column = charges_date_column
         self.charges_numeric_columns = charges_numeric_columns
+        self.all_columns = all_columns
 
         self.tradeledger_df = None
         self.charges_aggregate_df = None
@@ -330,20 +332,24 @@ class Broker(Provider):
     def read_ledger(self, start_date=None, end_date=None):
         self.tradeledger_df = process_financialledger_file(self.fledger_path,
                                                            post_process_func=self.fledger_post_process_func,
+                                                           date_column=self.fledger_date_column,
+                                                           date_format=self.fledger_date_format,
                                                            start_date=start_date,
                                                            end_date=end_date)
-        # print(self.tradeledger_df)
+        print(self.tradeledger_df)
 
-    def read_contract_notes(self, start_date=None, end_date=None, dry_run=False):
+    def read_contract_notes(self, start_date=None, end_date=None, dry_run=False, max_count=0):
         self.charges_aggregate_df = process_contractnotes_folder(self.cnote_folder_path,
                                                                  charges_aggregate_file_path=self.charges_file_path,
-                                                                 charges_match_func=self.charges_match_func,
-                                                                 charges_post_process_func=self.charges_post_process_func,
+                                                                 summary_match_func=self.summary_match_func,
+                                                                 summary_post_process_func=self.summary_post_process_func,
                                                                  date_column=self.charges_date_column,
                                                                  numeric_columns=self.charges_numeric_columns,
+                                                                 all_columns=self.all_columns,
                                                                  start_date=start_date,
                                                                  end_date=end_date,
-                                                                 dry_run=dry_run)
+                                                                 dry_run=dry_run,
+                                                                 max_count=max_count)
 
     def reconcile(self, start_date=None, end_date=None):
         self.reconciled_df = reconcile_charges_and_ledger(self.tradeledger_df,
