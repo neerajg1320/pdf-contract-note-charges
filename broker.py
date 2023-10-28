@@ -224,13 +224,13 @@ def process_contractnotes_folder(cnotes_folder_path, *,
     return aggregate_df
 
 
-def process_financialledger_file(data_file, *, start_date=None, end_date=None, max_count=0):
+def process_financialledger_file(data_file, *, post_process_func=None, start_date=None, end_date=None, max_count=0):
     fledger_df = pd.read_excel(data_file)
-    tradeentry_df = fledger_df[fledger_df['Voucher Type'] == 'Book Voucher']
-    # print(tradeentry_df)
-    # print(tradeentry_df.shape)
+    # tradeentry_df = fledger_df[fledger_df['Voucher Type'] == 'Book Voucher']
+    if post_process_func is not None:
+        fledger_df = post_process_func(fledger_df)
 
-    return tradeentry_df
+    return fledger_df
 
 
 def reconcile_charges_and_ledger(ledger_df, charges_df, *, ledger_date_column='Date', charges_date_column='Date'):
@@ -292,6 +292,7 @@ class Broker(Provider):
                  input_path_prefix='data',
                  compute_path_prefix='compute',
                  fledger_date_column='Date',
+                 fledger_post_process_func=None,
                  charges_date_column='Date',
                  charges_numeric_columns=None,
                  charges_match_func=None,
@@ -302,6 +303,7 @@ class Broker(Provider):
         self.charges_file_path = os.path.join(compute_path_prefix, self.name, f'charges.{self.output_format}')
         self.charges_match_func = charges_match_func
         self.charges_post_process_func = charges_post_process_func
+        self.fledger_post_process_func = fledger_post_process_func
         self.fledger_date_column = fledger_date_column
         self.charges_date_column = charges_date_column
         self.charges_numeric_columns = charges_numeric_columns
@@ -311,14 +313,14 @@ class Broker(Provider):
         self.reconciled_df = None
         self.unnatched_df = None
 
-    def compute(self, start_date=None, end_date=None, dry_run=False):
-        charges_document_name = f'{self.name} Charges Aggregate'
-        financialledger_document_name = f'{self.name} Financial Ledger'
-
+    def read_ledger(self, start_date=None, end_date=None):
         self.tradeledger_df = process_financialledger_file(self.fledger_path,
-                                                      start_date=start_date,
-                                                      end_date=end_date)
+                                                           post_process_func=self.fledger_post_process_func,
+                                                           start_date=start_date,
+                                                           end_date=end_date)
+        print(self.tradeledger_df)
 
+    def read_contract_notes(self, start_date=None, end_date=None, dry_run=False):
         self.charges_aggregate_df = process_contractnotes_folder(self.cnote_folder_path,
                                                                  charges_aggregate_file_path=self.charges_file_path,
                                                                  charges_match_func=self.charges_match_func,
@@ -329,18 +331,29 @@ class Broker(Provider):
                                                                  end_date=end_date,
                                                                  dry_run=dry_run)
 
+    def reconcile(self, start_date=None, end_date=None):
         self.reconciled_df = reconcile_charges_and_ledger(self.tradeledger_df,
-                                                     self.charges_aggregate_df,
-                                                     ledger_date_column=self.fledger_date_column,
-                                                     charges_date_column=self.charges_date_column)
+                                                          self.charges_aggregate_df,
+                                                          ledger_date_column=self.fledger_date_column,
+                                                          charges_date_column=self.charges_date_column)
 
         print('Missing Entries')
         self.unmatched_df = find_unmatched(self.reconciled_df,
-                                      ledger_date_column=self.fledger_date_column,
-                                      charges_date_column=self.charges_date_column)
+                                           ledger_date_column=self.fledger_date_column,
+                                           charges_date_column=self.charges_date_column)
+
+        charges_document_name = f'{self.name} Charges Aggregate'
+        financialledger_document_name = f'{self.name} Financial Ledger'
 
         generate_report_from_unmatched(self.unmatched_df,
                                        left_on=self.fledger_date_column,
                                        right_on=self.charges_date_column,
                                        left_report=financialledger_document_name,
                                        right_report=charges_document_name)
+
+    def compute(self, start_date=None, end_date=None, dry_run=False):
+        self.read_ledger(start_date=start_date, end_date=end_date)
+        self.read_contract_notes(start_date=start_date, end_date=end_date, dry_run=dry_run)
+        self.reconcile(start_date=start_date, end_date=end_date)
+
+
