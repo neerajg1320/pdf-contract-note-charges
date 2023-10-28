@@ -1,5 +1,6 @@
 .idea
 .DS_Store
 data
+compute
 output
 __pycache__

@@ -126,15 +126,21 @@ def get_charges_aggregate_df_from_pdf(pdf_file_path, numeric_columns=None):
 
 
 debug_process = False
-def process_contractnotes_folder(data_folder, *, aggregate_file_path=None, date_column='Date', numeric_columns=None, start_date=None, end_date=None, max_count=0, dry_run=False):
+def process_contractnotes_folder(data_folder_path, *, charges_aggregate_file_path=None, date_column='Date', numeric_columns=None, start_date=None, end_date=None, max_count=0, dry_run=False):
+    if not os.path.exists(data_folder_path):
+        raise RuntimeError(f"folder '{data_folder_path}' does not exist")
+
     count = 0
 
     aggregate_df = pd.DataFrame()
-    if aggregate_file_path is not None:
-        if os.path.exists(aggregate_file_path):
-            aggregate_df = pd.read_excel(aggregate_file_path)
+    if charges_aggregate_file_path is not None:
+        if os.path.exists(charges_aggregate_file_path):
+            print(f"Reading charges aggregate file '{charges_aggregate_file_path}'")
+            aggregate_df = pd.read_excel(charges_aggregate_file_path)
+        else:
+            raise RuntimeError(f"Charges aggregate file '{charges_aggregate_file_path}' does not exist")
 
-    for (root, dirs, files) in os.walk(data_folder):
+    for (root, dirs, files) in os.walk(data_folder_path):
         files.sort()
         for file in files:
             if max_count > 0 and count >= max_count:
@@ -188,7 +194,7 @@ def process_contractnotes_folder(data_folder, *, aggregate_file_path=None, date_
     if count > 0:
         # We convert the decimal columns to float
         aggregate_df[numeric_columns] = aggregate_df[numeric_columns].map(float)
-        create_output_file(aggregate_df, aggregate_file_path, dry_run=dry_run)
+        create_output_file(aggregate_df, charges_aggregate_file_path, dry_run=dry_run)
 
     return aggregate_df
 
@@ -259,49 +265,50 @@ class Broker(Provider):
 
     def __init__(self, name, *,
                  input_path_prefix='data',
-                 output_path_prefix='output',
+                 compute_path_prefix='compute',
                  fledger_date_column='Date',
                  charges_date_column='Date',
                  charges_numeric_columns=None):
         super(Broker, self).__init__(name, "Broker")
         self.fledger_path = os.path.join(input_path_prefix, f'FinancialLedger/{self.name}/{self.name}_FinancialLedger_Transactions.xlsx')
         self.cnote_folder_path = os.path.join(input_path_prefix, f'ContractNotes/{self.name}')
-        self.charges_file_path = os.path.join(output_path_prefix, f'charges.{self.output_format}')
+        self.charges_file_path = os.path.join(compute_path_prefix, self.name, f'charges.{self.output_format}')
         self.fledger_date_column = fledger_date_column
         self.charges_date_column = charges_date_column
         self.charges_numeric_columns = charges_numeric_columns
 
-    def compute(self, start_date=None, end_date=None):
-        print(self.fledger_path)
-        print(self.cnote_folder_path)
-        print(self.fledger_date_column)
+        self.tradeledger_df = None
+        self.charges_aggregate_df = None
+        self.reconciled_df = None
+        self.unnatched_df = None
 
+    def compute(self, start_date=None, end_date=None, dry_run=False):
         charges_document_name = f'{self.name} Charges Aggregate'
         financialledger_document_name = f'{self.name} Financial Ledger'
 
-        tradeledger_df = process_financialledger_file(self.fledger_path,
+        self.tradeledger_df = process_financialledger_file(self.fledger_path,
                                                       start_date=start_date,
                                                       end_date=end_date)
 
-        charges_aggregate_df = process_contractnotes_folder(self.cnote_folder_path,
-                                                            aggregate_file_path=self.charges_file_path,
-                                                            date_column=self.charges_date_column,
-                                                            numeric_columns=self.charges_numeric_columns,
-                                                            start_date=start_date,
-                                                            end_date=end_date,
-                                                            dry_run=True)
+        self.charges_aggregate_df = process_contractnotes_folder(self.cnote_folder_path,
+                                                                 charges_aggregate_file_path=self.charges_file_path,
+                                                                 date_column=self.charges_date_column,
+                                                                 numeric_columns=self.charges_numeric_columns,
+                                                                 start_date=start_date,
+                                                                 end_date=end_date,
+                                                                 dry_run=dry_run)
 
-        reconciled_df = reconcile_charges_and_ledger(tradeledger_df,
-                                                     charges_aggregate_df,
+        self.reconciled_df = reconcile_charges_and_ledger(self.tradeledger_df,
+                                                     self.charges_aggregate_df,
                                                      ledger_date_column=self.fledger_date_column,
                                                      charges_date_column=self.charges_date_column)
 
         print('Missing Entries')
-        unmatched_df = find_unmatched(reconciled_df,
+        self.unmatched_df = find_unmatched(self.reconciled_df,
                                       ledger_date_column=self.fledger_date_column,
                                       charges_date_column=self.charges_date_column)
 
-        generate_report_from_unmatched(unmatched_df,
+        generate_report_from_unmatched(self.unmatched_df,
                                        left_on=self.fledger_date_column,
                                        right_on=self.charges_date_column,
                                        left_report=financialledger_document_name,
