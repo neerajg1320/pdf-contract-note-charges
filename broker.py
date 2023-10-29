@@ -226,7 +226,7 @@ def process_contractnotes_folder(cnotes_folder_path, *,
 
             if not charges_sum_df.empty:
                 # TBD: This should also be moved into post_process
-                charges_sum_df['Date'] = date
+                # charges_sum_df['Date'] = date
 
                 aggregate_df = pd.concat([aggregate_df, charges_sum_df], axis=0)
                 count += 1

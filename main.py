@@ -33,6 +33,8 @@ def zerodha_post_process_summary_dataframe(cnote_file_path, date, df):
     charges_df = pd.DataFrame(summary_df.values[1:-1,], columns=zerodha_numeric_columns)
     sum_series = charges_df.sum()
     charges_sum_df = sum_series.to_frame().transpose()
+    charges_sum_df['Date'] = date
+    charges_sum_df['Document'] = cnote_file_path
     return charges_sum_df
 
 
@@ -106,6 +108,9 @@ def axisdirect_post_process_charges_dataframe(cnote_file_path, date, df):
         charges_sum_df[key] = value
     df_print(charges_sum_df, location=True, active=True)
 
+    charges_sum_df['Date'] = date
+    charges_sum_df['Document'] = cnote_file_path
+    
     return charges_sum_df
 
 
