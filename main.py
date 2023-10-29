@@ -23,7 +23,7 @@ def zerodha_match_summary_dataframe(df):
 zerodha_numeric_columns = ['Equity', 'Equity (T+1)', 'Futures and Options', 'NET TOTAL']
 
 
-def zerodha_post_process_summary_dataframe(cnote_file_path, df):
+def zerodha_post_process_summary_dataframe(cnote_file_path, date, df):
     if df.shape[1] == 4:
         print("Fixed the df")
         df['Equity (T+1)'] = ""
@@ -64,7 +64,7 @@ def axisdirect_match_charges_dataframe(df):
     return df.shape == (17, 6)
 
 
-def axisdirect_post_process_charges_dataframe(cnote_file_path, df):
+def axisdirect_post_process_charges_dataframe(cnote_file_path, date, df):
     df_print(df, active=False)
 
     charges_rows = [
@@ -124,5 +124,5 @@ axisdirect_broker = Broker('Axisdirect',
 
 
 # axisdirect_broker.read_ledger(start_date=start_date, end_date=end_date)
-axisdirect_broker.read_contract_notes(start_date=start_date, end_date=end_date, dry_run=False, max_count=2)
+axisdirect_broker.read_contract_notes(start_date=start_date, end_date=end_date, dry_run=True, max_count=2)
 # axisdirect_broker.compute(start_date=start_date, end_date=end_date, dry_run=False)

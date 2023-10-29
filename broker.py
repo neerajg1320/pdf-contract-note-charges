@@ -99,7 +99,7 @@ def get_pdf_number_of_pages(pdf_file_path):
     return len(reader.pages)
 
 
-def get_charges_aggregate_df_from_pdf(pdf_file_path, *,
+def get_charges_aggregate_df_from_pdf(pdf_file_path, date, *,
                                       num_last_pages=0,
                                       numeric_columns=None,
                                       summary_match_func=None,
@@ -144,7 +144,7 @@ def get_charges_aggregate_df_from_pdf(pdf_file_path, *,
             raise RuntimeError(f"Summary table not found in file '{pdf_file_path}'")
 
         if summary_post_process_func is not None:
-            charges_sum_df = summary_post_process_func(pdf_file_path, summary_df)
+            charges_sum_df = summary_post_process_func(pdf_file_path, date, summary_df)
 
             df_print(charges_sum_df, active=False)
 
@@ -217,27 +217,22 @@ def process_contractnotes_folder(cnotes_folder_path, *,
             pdf_file_path = os.path.join(root, file)
 
             charges_sum_df = get_charges_aggregate_df_from_pdf(pdf_file_path,
+                                                               date,
                                                                num_last_pages=num_last_pages,
                                                                numeric_columns=numeric_columns,
                                                                summary_match_func=summary_match_func,
                                                                summary_post_process_func=summary_post_process_func
                                                                )
 
-            charges_sum_df['Date'] = date
-
-            charges_columns = [date_column]
-            charges_columns.extend(numeric_columns)
-
             if not charges_sum_df.empty:
-                charges_sum_df = charges_sum_df[charges_columns]
+                # TBD: This should also be moved into post_process
+                charges_sum_df['Date'] = date
 
                 aggregate_df = pd.concat([aggregate_df, charges_sum_df], axis=0)
                 count += 1
 
-            # print(f"Error processing contract note for date {date}")
-
     if aggregate_df is not None:
-        df_print(aggregate_df, active=False)  # Show
+        df_print(aggregate_df, active=True)  # Show
 
     if count > 0:
         # We convert the decimal columns to float
