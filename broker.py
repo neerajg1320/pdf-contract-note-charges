@@ -1,3 +1,4 @@
+import decimal
 import os
 import camelot
 from pypdf import PdfReader
@@ -47,22 +48,32 @@ def get_dataframe_from_camelot_table(table):
     return df_with_column_headers
 
 
-def get_decimal_or_blank_value(cell):
+def convert_to_decimal_or_blank(cell):
+    if isinstance(cell, Decimal):
+        debug_log(f"cell value '{cell}' is already a Decimal")
+        return cell
+
+    input_value = cell
+    if not isinstance(cell, str):
+        input_value = str(cell)
+
     value = np.NaN
+    try:
+        whitespace_match = re.match(whitespace_regex, input_value)
+        if whitespace_match is not None:
+            value = 0
+        else:
+            match = re.match(bracketed_number_regex, input_value)
 
-    whitespace_match = re.match(whitespace_regex, cell)
-    if whitespace_match is not None:
-        value = 0
-    else:
-        match = re.match(bracketed_number_regex, cell)
-
-        try:
-            if match is not None:
-                value = -Decimal(match.group(1))
-            else:
-                value = Decimal(cell)
-        except InvalidOperation as e:
-            print(type(e).__name__, f"Error! cant convert {cell} to decimal")
+            try:
+                if match is not None:
+                    value = -Decimal(match.group(1))
+                else:
+                    value = Decimal(input_value)
+            except InvalidOperation as e:
+                print(type(e).__name__, f"Error! cant convert {cell} to decimal")
+    except TypeError as e:
+        debug_log(f"Error! matching cell '{cell}'[{type(cell)}] with whitespace_regex '{whitespace_regex}'")
 
     return value
 
@@ -223,11 +234,7 @@ def process_contractnotes_folder(cnotes_folder_path, *,
                                                                summary_match_func=summary_match_func,
                                                                summary_post_process_func=summary_post_process_func
                                                                )
-
             if not charges_sum_df.empty:
-                # TBD: This should also be moved into post_process
-                # charges_sum_df['Date'] = date
-
                 aggregate_df = pd.concat([aggregate_df, charges_sum_df], axis=0)
                 count += 1
 

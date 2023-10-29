@@ -29,10 +29,11 @@ def zerodha_post_process_summary_dataframe(cnote_file_path, date, df):
         df['Equity (T+1)'] = ""
 
     df = df[zerodha_numeric_columns]
-    summary_df = df.map(get_decimal_or_blank_value)
+    summary_df = df.map(convert_to_decimal_or_blank)
     charges_df = pd.DataFrame(summary_df.values[1:-1,], columns=zerodha_numeric_columns)
     sum_series = charges_df.sum()
     charges_sum_df = sum_series.to_frame().transpose()
+
     charges_sum_df['Date'] = date
     charges_sum_df['Document'] = cnote_file_path
     return charges_sum_df
@@ -50,7 +51,7 @@ zerodha_broker = Broker('Zerodha',
                         summary_post_process_func=zerodha_post_process_summary_dataframe
                         )
 
-zerodha_broker.compute(start_date=start_date, end_date=end_date, dry_run=True, max_count=3)
+# zerodha_broker.compute(start_date=start_date, end_date=end_date, dry_run=True, max_count=3)
 
 
 axisdirect_numeric_columns = ['NCL-EQUITY', 'NCL F&O', 'NCL CDX', 'Total(Net)']
@@ -85,7 +86,7 @@ def axisdirect_post_process_charges_dataframe(cnote_file_path, date, df):
     df = df[axisdirect_numeric_columns]
 
     charges_df = df.iloc[charges_row_indices]
-    charges_df = charges_df.map(get_decimal_or_blank_value)
+    charges_df = charges_df.map(convert_to_decimal_or_blank)
 
     for index, (dfidx,row) in enumerate(charges_df.iterrows()):
         debug_log(row['NCL-EQUITY'], row['NCL F&O'], index, active=False)
@@ -104,13 +105,14 @@ def axisdirect_post_process_charges_dataframe(cnote_file_path, date, df):
     sum_series = charges_df.sum()
     charges_sum_df = sum_series.to_frame().transpose()
 
-    for key,value in aggregate_map.items():
-        charges_sum_df[key] = value
+    # for key,value in aggregate_map.items():
+    #     charges_sum_df[key] = value
     df_print(charges_sum_df, location=True, active=True)
+
 
     charges_sum_df['Date'] = date
     charges_sum_df['Document'] = cnote_file_path
-    
+
     return charges_sum_df
 
 
@@ -129,5 +131,5 @@ axisdirect_broker = Broker('Axisdirect',
 
 
 # axisdirect_broker.read_ledger(start_date=start_date, end_date=end_date)
-axisdirect_broker.read_contract_notes(start_date=start_date, end_date=end_date, dry_run=True, max_count=2)
+axisdirect_broker.read_contract_notes(start_date=start_date, end_date=end_date, dry_run=False, max_count=2)
 # axisdirect_broker.compute(start_date=start_date, end_date=end_date, dry_run=False)
