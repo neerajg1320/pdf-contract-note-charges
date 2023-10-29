@@ -50,7 +50,7 @@ def get_dataframe_from_camelot_table(table):
 
 def convert_to_decimal_or_blank(cell):
     if isinstance(cell, Decimal):
-        debug_log(f"cell value '{cell}' is already a Decimal")
+        debug_log(f"cell value '{cell}' is already a Decimal", active=False)
         return cell
 
     input_value = cell
@@ -243,7 +243,7 @@ def process_contractnotes_folder(cnotes_folder_path, *,
 
     if count > 0:
         # We convert the decimal columns to float
-        aggregate_df[numeric_columns] = aggregate_df[numeric_columns].map(float)
+        # aggregate_df = aggregate_df.map(float)
         create_output_file(aggregate_df, charges_aggregate_file_path, dry_run=dry_run)
 
     return aggregate_df
@@ -251,13 +251,14 @@ def process_contractnotes_folder(cnotes_folder_path, *,
 
 def process_financialledger_file(data_file, *, date_column='Date', date_format=None, post_process_func=None, start_date=None, end_date=None, max_count=0):
     fledger_df = pd.read_excel(data_file)
-    # tradeentry_df = fledger_df[fledger_df['Voucher Type'] == 'Book Voucher']
+
     if date_format is not None:
         fledger_df[date_column] = fledger_df[date_column].map(lambda x: convert_datestr_to_isostr(x, date_format) )
-        print(f"We need to process date")
 
     if post_process_func is not None:
         fledger_df = post_process_func(fledger_df)
+
+    df_print(fledger_df, active=True, shape=True)
 
     return fledger_df
 
@@ -344,7 +345,7 @@ class Broker(Provider):
         self.tradeledger_df = None
         self.charges_aggregate_df = None
         self.reconciled_df = None
-        self.unnatched_df = None
+        self.unmatched_df = None
 
     def read_ledger(self, start_date=None, end_date=None):
         self.tradeledger_df = process_financialledger_file(self.fledger_path,
@@ -374,23 +375,29 @@ class Broker(Provider):
                                                           ledger_date_column=self.fledger_date_column,
                                                           charges_date_column=self.charges_date_column)
 
-        print('Missing Entries')
         self.unmatched_df = find_unmatched(self.reconciled_df,
                                            ledger_date_column=self.fledger_date_column,
                                            charges_date_column=self.charges_date_column)
 
-        charges_document_name = f'{self.name} Charges Aggregate'
-        financialledger_document_name = f'{self.name} Financial Ledger'
+    def report(self):
+        if len(self.unmatched_df):
+            print('Missing Entries')
+            charges_document_name = f'{self.name} Charges Aggregate'
+            financialledger_document_name = f'{self.name} Financial Ledger'
 
-        generate_report_from_unmatched(self.unmatched_df,
-                                       left_on=self.fledger_date_column,
-                                       right_on=self.charges_date_column,
-                                       left_report=financialledger_document_name,
-                                       right_report=charges_document_name)
+            generate_report_from_unmatched(self.unmatched_df,
+                                           left_on=self.fledger_date_column,
+                                           right_on=self.charges_date_column,
+                                           left_report=financialledger_document_name,
+                                           right_report=charges_document_name)
+        else:
+            debug_log(f"There are no missing entries!", location=False)
 
     def compute(self, start_date=None, end_date=None, dry_run=False, max_count=0):
         self.read_ledger(start_date=start_date, end_date=end_date)
         self.read_contract_notes(start_date=start_date, end_date=end_date, dry_run=dry_run, max_count=max_count)
         self.reconcile(start_date=start_date, end_date=end_date)
+        self.report()
+
 
 
