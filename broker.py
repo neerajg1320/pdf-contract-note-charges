@@ -6,7 +6,7 @@ import numpy as np
 from decimal import Decimal, InvalidOperation
 import re
 from datetime import datetime
-from utils.df import df_print
+from utils.debug import df_print, debug_log
 
 
 whitespace_regex = r"^\s*$"
@@ -99,7 +99,8 @@ def get_pdf_number_of_pages(pdf_file_path):
     return len(reader.pages)
 
 
-def get_charges_aggregate_df_from_pdf(pdf_file_path,
+def get_charges_aggregate_df_from_pdf(pdf_file_path, *,
+                                      num_last_pages=4,
                                       numeric_columns=None,
                                       summary_match_func=None,
                                       summary_post_process_func=None
@@ -122,22 +123,35 @@ def get_charges_aggregate_df_from_pdf(pdf_file_path,
     # df_print(f"{pdf_file_path}: Number of pages:", num_pages)
 
     # TBD: To make configurable
-    # last_pages = f"{num_pages-1},{num_pages}"
-    last_pages = f"{num_pages-3},{num_pages-2},{num_pages-1},{num_pages}"
+    # last_pages_str = f"{num_pages-1},{num_pages}"
+    num_last_pages = 4
+    page_list = []
+    for i in range(num_last_pages):
+        page_num = num_pages - i
+        if page_num > 0:
+            page_list.append(str(page_num))
+    last_pages_str = ",".join(page_list)
 
-    tables = camelot.read_pdf(pdf_file_path, pages=last_pages)
-    print(f"{pdf_file_path}:  {len(tables)} Tables detected on pages:{last_pages} ")
+    # last_pages_str = f"{num_pages-3},{num_pages-2},{num_pages-1},{num_pages}"
+    debug_log("last_pages_str:", last_pages_str)
 
-    summary_df = get_summary_dataframe(tables, summary_match_func)
-    if summary_df is None:
-        raise RuntimeError(f"Summary table not found in file '{pdf_file_path}'")
+    try:
+        tables = camelot.read_pdf(pdf_file_path, pages=last_pages_str)
 
-    if summary_post_process_func is not None:
-        charges_sum_df = summary_post_process_func(summary_df)
+        print(f"{pdf_file_path}:  {len(tables)} Tables detected on pages:{last_pages_str} ")
 
-        df_print(charges_sum_df)
+        summary_df = get_summary_dataframe(tables, summary_match_func)
+        if summary_df is None:
+            raise RuntimeError(f"Summary table not found in file '{pdf_file_path}'")
 
-        return charges_sum_df
+        if summary_post_process_func is not None:
+            charges_sum_df = summary_post_process_func(pdf_file_path, summary_df)
+
+            df_print(charges_sum_df, active=False)
+
+            return charges_sum_df
+    except ValueError as e:
+        debug_log(f"Error! {type(e)} reading file '{pdf_file_path}'")
 
     return pd.DataFrame()
 
@@ -213,15 +227,16 @@ def process_contractnotes_folder(cnotes_folder_path, *,
             charges_columns = [date_column]
             charges_columns.extend(numeric_columns)
 
-            charges_sum_df = charges_sum_df[charges_columns]
+            if not charges_sum_df.empty:
+                charges_sum_df = charges_sum_df[charges_columns]
 
-            aggregate_df = pd.concat([aggregate_df, charges_sum_df], axis=0)
-            count += 1
+                aggregate_df = pd.concat([aggregate_df, charges_sum_df], axis=0)
+                count += 1
 
             # print(f"Error processing contract note for date {date}")
 
     if aggregate_df is not None:
-        df_print(aggregate_df)
+        df_print(aggregate_df, active=False)  # Show
 
     if count > 0:
         # We convert the decimal columns to float
@@ -333,7 +348,7 @@ class Broker(Provider):
                                                            date_format=self.fledger_date_format,
                                                            start_date=start_date,
                                                            end_date=end_date)
-        df_print(self.tradeledger_df)
+        df_print(self.tradeledger_df, active=False)
 
     def read_contract_notes(self, start_date=None, end_date=None, dry_run=False, max_count=0):
         self.charges_aggregate_df = process_contractnotes_folder(self.cnote_folder_path,
