@@ -1,8 +1,9 @@
 from broker import *
+from utils.df import df_print
 
 pd_set_options()
 
-data_type = 'main'
+data_type = 'sample'
 
 start_date = "2022-04-01"
 if data_type == 'sample':
@@ -30,8 +31,9 @@ def zerodha_post_process_summary_dataframe(df):
     df = df[zerodha_numeric_columns]
     summary_df = df.map(get_decimal_or_blank_value)
     charges_df = pd.DataFrame(summary_df.values[1:-1,], columns=zerodha_numeric_columns)
-
-    return charges_df
+    sum_series = charges_df.sum()
+    charges_sum_df = sum_series.to_frame().transpose()
+    return charges_sum_df
 
 
 zerodha_broker = Broker('Zerodha',
@@ -45,7 +47,7 @@ zerodha_broker = Broker('Zerodha',
                         summary_post_process_func=zerodha_post_process_summary_dataframe
                         )
 
-# zerodha_broker.compute(start_date=start_date, end_date=end_date, dry_run=True)
+zerodha_broker.compute(start_date=start_date, end_date=end_date, dry_run=True)
 
 
 axisdirect_numeric_columns = ['NCL-EQUITY', 'NCL F&O', 'NCL CDX', 'Total(Net)']
@@ -62,27 +64,44 @@ def axisdirect_match_charges_dataframe(df):
 
 
 def axisdirect_post_process_charges_dataframe(df):
-    # print(df)
+    df_print(df, active=False)
 
     charges_rows = [
-        {'name': 'TaxableCharges', 'row': 4},
-        {'name': 'CGST', 'row': 6},
-        {'name': 'SGST', 'row': 8},
-        {'name': 'IGST', 'row': 10},
-        {'name': 'UTGST', 'row': 12},
-        {'name': 'STT', 'row': 13},
-        {'name': 'StampDuty', 'row': 14},
+        {'name': 'TaxableCharges', 'row': 4, 'aggregate': 'TaxableCharges'},
+        {'name': 'CGST', 'row': 6, 'aggregate': 'GST'},
+        {'name': 'SGST', 'row': 8, 'aggregate': 'GST'},
+        {'name': 'IGST', 'row': 10, 'aggregate': 'GST'},
+        {'name': 'UTGST', 'row': 12, 'aggregate': 'GST'},
+        {'name': 'STT', 'row': 13, 'aggregate': 'STT'},
+        {'name': 'StampDuty', 'row': 14, 'aggregate': 'StampDuty'},
     ]
-    row_indices = list(map(lambda x: x['row'], charges_rows))
+    charges_row_indices = list(map(lambda x: x['row'], charges_rows))
+
+    aggregate_map = {}
 
     df = df[axisdirect_numeric_columns]
-    df = df.iloc[row_indices]
-    summary_df = df.map(get_decimal_or_blank_value)
-    # print(summary_df)
 
-    # charges_df = pd.DataFrame(summary_df.values[1:-2,], columns=axisdirect_numeric_columns)
+    charges_df = df.iloc[charges_row_indices]
+    charges_df = charges_df.map(get_decimal_or_blank_value)
 
-    return summary_df
+    for index, (dfidx,row) in enumerate(charges_df.iterrows()):
+        print(row['NCL-EQUITY'], row['NCL F&O'], index, )
+        agg_key = charges_rows[index]['aggregate']
+        if agg_key not in aggregate_map:
+            aggregate_map[agg_key] = 0
+        aggregate_map[agg_key] += row['Total(Net)']
+
+    # print(aggregate_map)
+
+    # TBD: We should do the sum here
+    sum_series = charges_df.sum()
+    charges_sum_df = sum_series.to_frame().transpose()
+
+    for key,value in aggregate_map.items():
+        charges_sum_df[key] = value
+    df_print(charges_sum_df, location=True, active=False)
+
+    return charges_sum_df
 
 
 axisdirect_broker = Broker('Axisdirect',
@@ -99,5 +118,5 @@ axisdirect_broker = Broker('Axisdirect',
 
 
 # axisdirect_broker.read_ledger(start_date=start_date, end_date=end_date)
-# axisdirect_broker.read_contract_notes(start_date=start_date, end_date=end_date, dry_run=True, max_count=0)
-axisdirect_broker.compute(start_date=start_date, end_date=end_date, dry_run=False)
+axisdirect_broker.read_contract_notes(start_date=start_date, end_date=end_date, dry_run=True, max_count=0)
+# axisdirect_broker.compute(start_date=start_date, end_date=end_date, dry_run=False)
