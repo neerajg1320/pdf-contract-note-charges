@@ -100,7 +100,7 @@ def get_pdf_number_of_pages(pdf_file_path):
 
 
 def get_charges_aggregate_df_from_pdf(pdf_file_path, *,
-                                      num_last_pages=4,
+                                      num_last_pages=0,
                                       numeric_columns=None,
                                       summary_match_func=None,
                                       summary_post_process_func=None
@@ -119,20 +119,19 @@ def get_charges_aggregate_df_from_pdf(pdf_file_path, *,
 
     # df_print(pdf_file_path)
 
-    num_pages = get_pdf_number_of_pages(pdf_file_path)
-    # df_print(f"{pdf_file_path}: Number of pages:", num_pages)
+    cnote_num_pages = get_pdf_number_of_pages(pdf_file_path)
+    # df_print(f"{pdf_file_path}: Number of pages:", cnote_num_pages)
 
-    # TBD: To make configurable
-    # last_pages_str = f"{num_pages-1},{num_pages}"
-    num_last_pages = 4
-    page_list = []
-    for i in range(num_last_pages):
-        page_num = num_pages - i
-        if page_num > 0:
-            page_list.append(str(page_num))
-    last_pages_str = ",".join(page_list)
+    if num_last_pages > 0:
+        page_list = []
+        for i in range(num_last_pages):
+            page_num = cnote_num_pages - i
+            if page_num > 0:
+                page_list.append(str(page_num))
+        last_pages_str = ",".join(page_list)
+    else:
+        last_pages_str = "all"
 
-    # last_pages_str = f"{num_pages-3},{num_pages-2},{num_pages-1},{num_pages}"
     debug_log("last_pages_str:", last_pages_str)
 
     try:
@@ -160,6 +159,7 @@ debug_process = True
 
 
 def process_contractnotes_folder(cnotes_folder_path, *,
+                                 num_last_pages=0,
                                  charges_aggregate_file_path=None,
                                  summary_match_func=None,
                                  summary_post_process_func=None,
@@ -217,6 +217,7 @@ def process_contractnotes_folder(cnotes_folder_path, *,
             pdf_file_path = os.path.join(root, file)
 
             charges_sum_df = get_charges_aggregate_df_from_pdf(pdf_file_path,
+                                                               num_last_pages=num_last_pages,
                                                                numeric_columns=numeric_columns,
                                                                summary_match_func=summary_match_func,
                                                                summary_post_process_func=summary_post_process_func
@@ -320,6 +321,7 @@ class Broker(Provider):
                  fledger_date_column='Date',
                  fledger_date_format=None,
                  fledger_post_process_func=None,
+                 cnote_num_last_pages=2,
                  charges_date_column='Date',
                  charges_numeric_columns=None,
                  summary_match_func=None,
@@ -333,6 +335,7 @@ class Broker(Provider):
         self.fledger_post_process_func = fledger_post_process_func
         self.fledger_date_column = fledger_date_column
         self.fledger_date_format = fledger_date_format
+        self.cnote_num_last_pages = cnote_num_last_pages
         self.charges_date_column = charges_date_column
         self.charges_numeric_columns = charges_numeric_columns
 
@@ -353,6 +356,7 @@ class Broker(Provider):
     def read_contract_notes(self, start_date=None, end_date=None, dry_run=False, max_count=0):
         self.charges_aggregate_df = process_contractnotes_folder(self.cnote_folder_path,
                                                                  charges_aggregate_file_path=self.charges_file_path,
+                                                                 num_last_pages=self.cnote_num_last_pages,
                                                                  summary_match_func=self.summary_match_func,
                                                                  summary_post_process_func=self.summary_post_process_func,
                                                                  date_column=self.charges_date_column,
@@ -382,9 +386,9 @@ class Broker(Provider):
                                        left_report=financialledger_document_name,
                                        right_report=charges_document_name)
 
-    def compute(self, start_date=None, end_date=None, dry_run=False):
+    def compute(self, start_date=None, end_date=None, dry_run=False, max_count=0):
         self.read_ledger(start_date=start_date, end_date=end_date)
-        self.read_contract_notes(start_date=start_date, end_date=end_date, dry_run=dry_run)
+        self.read_contract_notes(start_date=start_date, end_date=end_date, dry_run=dry_run, max_count=max_count)
         self.reconcile(start_date=start_date, end_date=end_date)
 
 

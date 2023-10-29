@@ -41,13 +41,14 @@ zerodha_broker = Broker('Zerodha',
                         compute_path_prefix=f'compute/{data_type}',
                         fledger_date_column='Posting Date',
                         fledger_post_process_func=zerodha_post_process_fledger_dataframe,
+                        cnote_num_last_pages=2,
                         charges_date_column='Date',
                         charges_numeric_columns=zerodha_numeric_columns,
                         summary_match_func=zerodha_match_summary_dataframe,
                         summary_post_process_func=zerodha_post_process_summary_dataframe
                         )
 
-zerodha_broker.compute(start_date=start_date, end_date=end_date, dry_run=True)
+zerodha_broker.compute(start_date=start_date, end_date=end_date, dry_run=True, max_count=3)
 
 
 axisdirect_numeric_columns = ['NCL-EQUITY', 'NCL F&O', 'NCL CDX', 'Total(Net)']
@@ -114,6 +115,7 @@ axisdirect_broker = Broker('Axisdirect',
                            fledger_date_column='Trn Date',
                            fledger_date_format='%d-%b-%y',
                            fledger_post_process_func=axisdirect_post_process_fledger_dataframe,
+                           cnote_num_last_pages=4,
                            charges_date_column='Date',
                            charges_numeric_columns=axisdirect_numeric_columns,
                            summary_match_func=axisdirect_match_charges_dataframe,
@@ -122,5 +124,5 @@ axisdirect_broker = Broker('Axisdirect',
 
 
 # axisdirect_broker.read_ledger(start_date=start_date, end_date=end_date)
-# axisdirect_broker.read_contract_notes(start_date=start_date, end_date=end_date, dry_run=False, max_count=2)
+axisdirect_broker.read_contract_notes(start_date=start_date, end_date=end_date, dry_run=False, max_count=2)
 # axisdirect_broker.compute(start_date=start_date, end_date=end_date, dry_run=False)
