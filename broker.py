@@ -97,8 +97,9 @@ def get_summary_dataframe(tables, match_func):
 
     match_df = None
     for table in tables:
+        # import pdb; pdb.set_trace()
         df = get_dataframe_from_camelot_table(table)
-        if match_func(df):
+        if match_func(df, page_num=table.page):
             match_df = df
             break
 
@@ -273,7 +274,7 @@ def reconcile_charges_and_ledger(ledger_df, charges_df, *, ledger_date_column='D
     return merged_df
 
 
-def find_unmatched(joined_df, *, ledger_date_column='Date', charges_date_column='Date'):
+def find_missing_entries(joined_df, *, ledger_date_column='Date', charges_date_column='Date'):
     mismatch_df = joined_df[joined_df[ledger_date_column] != joined_df[charges_date_column]]
     # df_print(mismatch_df)
     return mismatch_df
@@ -343,9 +344,9 @@ class Broker(Provider):
         self.charges_numeric_columns = charges_numeric_columns
 
         self.tradeledger_df = None
-        self.charges_aggregate_df = None
+        self.summary_aggregate_df = None
         self.reconciled_df = None
-        self.unmatched_df = None
+        self.missing_missing_df = None
 
     def read_ledger(self, start_date=None, end_date=None):
         self.tradeledger_df = process_financialledger_file(self.fledger_path,
@@ -357,7 +358,7 @@ class Broker(Provider):
         df_print(self.tradeledger_df, active=False)
 
     def read_contract_notes(self, start_date=None, end_date=None, dry_run=False, max_count=0):
-        self.charges_aggregate_df = process_contractnotes_folder(self.cnote_folder_path,
+        self.summary_aggregate_df = process_contractnotes_folder(self.cnote_folder_path,
                                                                  charges_aggregate_file_path=self.charges_file_path,
                                                                  num_last_pages=self.cnote_num_last_pages,
                                                                  summary_match_func=self.summary_match_func,
@@ -371,21 +372,24 @@ class Broker(Provider):
 
     def reconcile(self, start_date=None, end_date=None):
         self.reconciled_df = reconcile_charges_and_ledger(self.tradeledger_df,
-                                                          self.charges_aggregate_df,
+                                                          self.summary_aggregate_df,
                                                           ledger_date_column=self.fledger_date_column,
                                                           charges_date_column=self.charges_date_column)
 
-        self.unmatched_df = find_unmatched(self.reconciled_df,
-                                           ledger_date_column=self.fledger_date_column,
-                                           charges_date_column=self.charges_date_column)
+        self.missing_missing_df = find_missing_entries(self.reconciled_df,
+                                                       ledger_date_column=self.fledger_date_column,
+                                                       charges_date_column=self.charges_date_column)
+
+        if len(self.missing_missing_df) == 0:
+            debug_log(f"Now we should look for mismatch entries")
 
     def report(self):
-        if len(self.unmatched_df):
+        if len(self.missing_missing_df):
             print('Missing Entries')
             charges_document_name = f'{self.name} Charges Aggregate'
             financialledger_document_name = f'{self.name} Financial Ledger'
 
-            generate_report_from_unmatched(self.unmatched_df,
+            generate_report_from_unmatched(self.missing_missing_df,
                                            left_on=self.fledger_date_column,
                                            right_on=self.charges_date_column,
                                            left_report=financialledger_document_name,
