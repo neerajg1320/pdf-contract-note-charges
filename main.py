@@ -8,7 +8,7 @@ data_type = 'sample'
 start_date = "2022-04-01"
 if data_type == 'sample':
     end_date = "2023-01-31"
-    max_count = 1
+    max_count = 8
 else:
     end_date = "2023-04-01"
     max_count = 0
@@ -18,9 +18,9 @@ def zerodha_post_process_fledger_dataframe(df):
     return df[df['Voucher Type'] == 'Book Voucher']
 
 
-def zerodha_match_summary_dataframe(df):
+def zerodha_match_summary_dataframe(df, **kwargs):
     if df.shape == (11, 5) or df.shape == (11, 4):
-        return {'tag': 'Charges'}
+        return {'tag': 'Summary'}
 
     return None
 
@@ -58,7 +58,7 @@ zerodha_broker = Broker('Zerodha',
                         summary_post_process_func=zerodha_post_process_summary_dataframe
                         )
 
-# zerodha_broker.compute(start_date=start_date, end_date=end_date, dry_run=False, max_count=max_count)
+zerodha_broker.compute(start_date=start_date, end_date=end_date, dry_run=True, max_count=max_count)
 
 
 axisdirect_numeric_columns = ['NCL-EQUITY', 'NCL F&O', 'NCL CDX', 'Total(Net)']
@@ -75,7 +75,7 @@ NUM_TRADE_COLUMNS = 12
 NUM_CHARGES_COLUMNS = 6
 
 
-def axisdirect_match_dataframe(df, page_num=None):
+def axisdirect_match_dataframe(df, page_num=None, **kwargs):
     if page_num is not None:
         debug_log(f"PageNum:{page_num} Detected table {df.shape} ", active=False)
 
@@ -87,10 +87,10 @@ def axisdirect_match_dataframe(df, page_num=None):
     # df_print(df, shape=True, active=True)
 
     # len_df = df.map(lambda cell: len(str(cell)))
-    debug_log(df.columns)
+    debug_log(df.columns, active=False)
 
     if num_columns == NUM_CHARGES_COLUMNS:
-        return {'tag': 'Charges'}
+        return {'tag': 'Summary'}
 
     return None
 

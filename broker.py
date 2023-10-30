@@ -91,21 +91,6 @@ def convert_to_decimal(cell, ignore=False):
     return new_cell
 
 
-def get_summary_dataframe(tables, match_func):
-    if match_func is None:
-        raise RuntimeError("match_func parameter is mandatory")
-
-    match_df = None
-    for table in tables:
-        # import pdb; pdb.set_trace()
-        df = get_dataframe_from_camelot_table(table)
-        if match_func(df, page_num=table.page):
-            match_df = df
-            break
-
-    return match_df
-
-
 def get_pdf_number_of_pages(pdf_file_path):
     reader = PdfReader(pdf_file_path)
     return len(reader.pages)
@@ -124,20 +109,20 @@ def get_charges_aggregate_df_from_pdf(pdf_file_path, date, *,
         raise RuntimeError(f"numeric_columns is not provided")
 
     if summary_match_func is None:
-        raise RuntimeError(f"charges_match_func is not provided")
+        raise RuntimeError(f"summary_match_func is not provided")
 
     if summary_post_process_func is None:
         raise RuntimeError(f"summary_post_process_func is not provided")
 
     # df_print(pdf_file_path)
 
-    cnote_num_pages = get_pdf_number_of_pages(pdf_file_path)
-    # df_print(f"{pdf_file_path}: Number of pages:", cnote_num_pages)
+    document_num_pages = get_pdf_number_of_pages(pdf_file_path)
+    # df_print(f"{pdf_file_path}: Number of pages:", document_num_pages)
 
     if num_last_pages > 0:
         page_list = []
         for i in range(num_last_pages):
-            page_num = cnote_num_pages - i
+            page_num = document_num_pages - i
             if page_num > 0:
                 page_list.append(str(page_num))
         last_pages_str = ",".join(page_list)
@@ -151,7 +136,14 @@ def get_charges_aggregate_df_from_pdf(pdf_file_path, date, *,
 
         print(f"{pdf_file_path}:  {len(tables)} Tables detected on pages:{last_pages_str} ")
 
-        summary_df = get_summary_dataframe(tables, summary_match_func)
+        summary_df = None
+        for table in tables:
+            df = get_dataframe_from_camelot_table(table)
+            doc_info = summary_match_func(df, page_num=table.page)
+            if doc_info and doc_info['tag'] == 'Summary':
+                summary_df = df
+                break
+
         if summary_df is None:
             raise RuntimeError(f"Summary table not found in file '{pdf_file_path}'")
 
