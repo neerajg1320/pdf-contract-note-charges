@@ -98,15 +98,11 @@ def get_pdf_number_of_pages(pdf_file_path):
 
 def get_charges_aggregate_df_from_pdf(pdf_file_path, date, *,
                                       num_last_pages=0,
-                                      numeric_columns=None,
                                       summary_match_func=None,
                                       summary_post_process_func=None
                                       ):
     if pdf_file_path is None:
         raise RuntimeError(f"pdf_file_path is not provided")
-
-    if numeric_columns is None:
-        raise RuntimeError(f"numeric_columns is not provided")
 
     if summary_match_func is None:
         raise RuntimeError(f"summary_match_func is not provided")
@@ -165,10 +161,9 @@ debug_process = True
 def process_contractnotes_folder(cnotes_folder_path, *,
                                  num_last_pages=0,
                                  charges_aggregate_file_path=None,
-                                 summary_match_func=None,
-                                 summary_post_process_func=None,
+                                 table_match_func=None,
+                                 table_post_process_func=None,
                                  date_column='Date',
-                                 numeric_columns=None,
                                  start_date=None,
                                  end_date=None,
                                  max_count=0,
@@ -223,9 +218,8 @@ def process_contractnotes_folder(cnotes_folder_path, *,
             charges_sum_df = get_charges_aggregate_df_from_pdf(pdf_file_path,
                                                                date,
                                                                num_last_pages=num_last_pages,
-                                                               numeric_columns=numeric_columns,
-                                                               summary_match_func=summary_match_func,
-                                                               summary_post_process_func=summary_post_process_func
+                                                               summary_match_func=table_match_func,
+                                                               summary_post_process_func=table_post_process_func
                                                                )
             if not charges_sum_df.empty:
                 aggregate_df = pd.concat([aggregate_df, charges_sum_df], axis=0)
@@ -319,7 +313,6 @@ class Broker(Provider):
                  fledger_post_process_func=None,
                  cnote_num_last_pages=2,
                  charges_date_column='Date',
-                 charges_numeric_columns=None,
                  summary_match_func=None,
                  summary_post_process_func=None):
         super(Broker, self).__init__(name, "Broker")
@@ -333,7 +326,6 @@ class Broker(Provider):
         self.fledger_date_format = fledger_date_format
         self.cnote_num_last_pages = cnote_num_last_pages
         self.charges_date_column = charges_date_column
-        self.charges_numeric_columns = charges_numeric_columns
 
         self.tradeledger_df = None
         self.summary_aggregate_df = None
@@ -353,10 +345,9 @@ class Broker(Provider):
         self.summary_aggregate_df = process_contractnotes_folder(self.cnote_folder_path,
                                                                  charges_aggregate_file_path=self.charges_file_path,
                                                                  num_last_pages=self.cnote_num_last_pages,
-                                                                 summary_match_func=self.summary_match_func,
-                                                                 summary_post_process_func=self.summary_post_process_func,
+                                                                 table_match_func=self.summary_match_func,
+                                                                 table_post_process_func=self.summary_post_process_func,
                                                                  date_column=self.charges_date_column,
-                                                                 numeric_columns=self.charges_numeric_columns,
                                                                  start_date=start_date,
                                                                  end_date=end_date,
                                                                  dry_run=dry_run,

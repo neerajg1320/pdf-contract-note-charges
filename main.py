@@ -53,7 +53,6 @@ zerodha_broker = Broker('Zerodha',
                         fledger_post_process_func=zerodha_post_process_fledger_dataframe,
                         cnote_num_last_pages=2,
                         charges_date_column='Date',
-                        charges_numeric_columns=zerodha_numeric_columns,
                         summary_match_func=zerodha_match_summary_dataframe,
                         summary_post_process_func=zerodha_post_process_summary_dataframe
                         )
@@ -115,7 +114,7 @@ def axisdirect_post_process_charges_dataframe(cnote_file_path, date, df):
     ]
     charges_row_indices = list(map(lambda x: x['row'], charges_rows))
 
-    chrages_aggregate_map = {}
+    charges_aggregate_map = {}
 
     df = df[axisdirect_numeric_columns]
 
@@ -126,22 +125,22 @@ def axisdirect_post_process_charges_dataframe(cnote_file_path, date, df):
         debug_log(row['NCL-EQUITY'], row['NCL F&O'], index, active=False)
         agg_key = charges_rows[index]['aggregate']
 
-        if agg_key not in chrages_aggregate_map:
-            chrages_aggregate_map[agg_key + "-EQ"] = 0
-            chrages_aggregate_map[agg_key + "-FnO"] = 0
-            chrages_aggregate_map[agg_key] = 0
-        chrages_aggregate_map[agg_key + "-EQ"] += row['NCL-EQUITY']
-        chrages_aggregate_map[agg_key + "-FnO"] += row['NCL F&O']
-        chrages_aggregate_map[agg_key] += row['Total(Net)']
+        if agg_key not in charges_aggregate_map:
+            charges_aggregate_map[agg_key + "-EQ"] = 0
+            charges_aggregate_map[agg_key + "-FnO"] = 0
+            charges_aggregate_map[agg_key] = 0
+        charges_aggregate_map[agg_key + "-EQ"] += row['NCL-EQUITY']
+        charges_aggregate_map[agg_key + "-FnO"] += row['NCL F&O']
+        charges_aggregate_map[agg_key] += row['Total(Net)']
 
-    debug_metadata(chrages_aggregate_map, active=False)
+    debug_metadata(charges_aggregate_map, active=False)
 
     # TBD: We should do the sum here
     sum_series = charges_df.sum()
     charges_sum_df = sum_series.to_frame().transpose()
 
-    # Add the values in the chrages_aggregate_map to dateframe
-    for key,value in chrages_aggregate_map.items():
+    # Add the values in the charges_aggregate_map to dateframe
+    for key,value in charges_aggregate_map.items():
         charges_sum_df[key] = value
 
     charges_sum_df['Gross-EQ'] = df.iloc[gross_row_index]['NCL-EQUITY']
@@ -177,7 +176,6 @@ axisdirect_broker = Broker('Axisdirect',
                            fledger_post_process_func=axisdirect_post_process_fledger_dataframe,
                            cnote_num_last_pages=4,
                            charges_date_column='Date',
-                           charges_numeric_columns=axisdirect_numeric_columns,
                            summary_match_func=axisdirect_match_dataframe,
                            summary_post_process_func=axisdirect_post_process_charges_dataframe
                            )
