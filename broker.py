@@ -117,7 +117,7 @@ def get_processed_dataframes_from_pdf(pdf_file_path, date, *,
                 else:
                     dataframes_map[table_tag] = pd.contact([dataframes_map[table_tag], processed_df], axis=0)
             else:
-                debug_log(f"Table shape:{df.shape} ignored! ")
+                debug_log(f"Table shape: {pdf_file_path} {df.shape} ignored! ")
                 df_print(df, active=False)
                 # raise RuntimeError(f"Table {df.shape} not matched")
 
