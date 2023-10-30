@@ -96,70 +96,41 @@ def get_pdf_number_of_pages(pdf_file_path):
     return len(reader.pages)
 
 
-def get_charges_aggregate_df_from_pdf(pdf_file_path, date, *,
-                                      num_last_pages=0,
-                                      summary_match_func=None,
-                                      summary_post_process_func=None
+def get_processed_dataframes_from_pdf(pdf_file_path, date, *,
+                                      table_match_func=None,
+                                      table_post_process_func=None
                                       ):
-    if pdf_file_path is None:
-        raise RuntimeError(f"pdf_file_path is not provided")
-
-    if summary_match_func is None:
-        raise RuntimeError(f"summary_match_func is not provided")
-
-    if summary_post_process_func is None:
-        raise RuntimeError(f"summary_post_process_func is not provided")
-
-    # df_print(pdf_file_path)
-
-    document_num_pages = get_pdf_number_of_pages(pdf_file_path)
-    # df_print(f"{pdf_file_path}: Number of pages:", document_num_pages)
-
-    if num_last_pages > 0:
-        page_list = []
-        for i in range(num_last_pages):
-            page_num = document_num_pages - i
-            if page_num > 0:
-                page_list.append(str(page_num))
-        last_pages_str = ",".join(page_list)
-    else:
-        last_pages_str = "all"
-
-    debug_log("last_pages_str:", last_pages_str)
+    # tag to aggregated_dateframe
+    dataframes_map = {}
 
     try:
-        tables = camelot.read_pdf(pdf_file_path, pages=last_pages_str)
+        tables = camelot.read_pdf(pdf_file_path, pages="all")
 
-        print(f"{pdf_file_path}:  {len(tables)} Tables detected on pages:{last_pages_str} ")
-
-        summary_df = None
         for table in tables:
             df = get_dataframe_from_camelot_table(table)
-            doc_info = summary_match_func(df, page_num=table.page)
-            if doc_info and doc_info['tag'] == 'Summary':
-                summary_df = df
-                break
+            doc_info = table_match_func(df, page_num=table.page)
+            if doc_info:
+                table_tag = doc_info['tag']
+                processed_df = table_post_process_func(pdf_file_path, date, df, doc_info)
+                if table_tag not in dataframes_map.keys():
+                    dataframes_map[table_tag] = processed_df
+                else:
+                    dataframes_map[table_tag] = pd.contact([dataframes_map[table_tag], processed_df], axis=0)
+            else:
+                debug_log(f"Table shape:{df.shape} ignored! ")
+                df_print(df, active=False)
+                # raise RuntimeError(f"Table {df.shape} not matched")
 
-        if summary_df is None:
-            raise RuntimeError(f"Summary table not found in file '{pdf_file_path}'")
-
-        if summary_post_process_func is not None:
-            charges_sum_df = summary_post_process_func(pdf_file_path, date, summary_df)
-
-            df_print(charges_sum_df, active=False)
-
-            return charges_sum_df
     except ValueError as e:
         debug_log(f"Error! {type(e)} reading file '{pdf_file_path}'")
 
-    return pd.DataFrame()
+    return dataframes_map
 
 
 debug_process = True
 
 
 def process_contractnotes_folder(cnotes_folder_path, *,
-                                 num_last_pages=0,
                                  charges_aggregate_file_path=None,
                                  table_match_func=None,
                                  table_post_process_func=None,
@@ -172,6 +143,7 @@ def process_contractnotes_folder(cnotes_folder_path, *,
         raise RuntimeError(f"folder '{cnotes_folder_path}' does not exist")
 
     count = 0
+    aggregate_map = {}
 
     aggregate_df = pd.DataFrame()
     if charges_aggregate_file_path is not None:
@@ -215,25 +187,27 @@ def process_contractnotes_folder(cnotes_folder_path, *,
 
             pdf_file_path = os.path.join(root, file)
 
-            charges_sum_df = get_charges_aggregate_df_from_pdf(pdf_file_path,
+            dataframes_map = get_processed_dataframes_from_pdf(pdf_file_path,
                                                                date,
-                                                               num_last_pages=num_last_pages,
-                                                               summary_match_func=table_match_func,
-                                                               summary_post_process_func=table_post_process_func
+                                                               table_match_func=table_match_func,
+                                                               table_post_process_func=table_post_process_func
                                                                )
-            if not charges_sum_df.empty:
-                aggregate_df = pd.concat([aggregate_df, charges_sum_df], axis=0)
-                count += 1
+            if len(dataframes_map):
+                for table_tag in dataframes_map.keys():
+                    if table_tag not in aggregate_map.keys():
+                        aggregate_map[table_tag] = dataframes_map[table_tag]
+                    else:
+                        aggregate_map[table_tag] = pd.concat([aggregate_map[table_tag], dataframes_map[table_tag]], axis=0)
+                    count += 1
 
-    if aggregate_df is not None:
-        df_print(aggregate_df, active=True)  # Show
 
     if count > 0:
         # We convert the decimal columns to float
         # aggregate_df = aggregate_df.map(float)
-        create_output_file(aggregate_df, charges_aggregate_file_path, dry_run=dry_run)
+        # create_output_file(aggregate_df, charges_aggregate_file_path, dry_run=dry_run)
+        pass
 
-    return aggregate_df
+    return aggregate_map
 
 
 def process_financialledger_file(data_file, *, date_column='Date', date_format=None, post_process_func=None, start_date=None, end_date=None, max_count=0):
@@ -342,9 +316,8 @@ class Broker(Provider):
         df_print(self.tradeledger_df, active=False)
 
     def read_contract_notes(self, start_date=None, end_date=None, dry_run=False, max_count=0):
-        self.summary_aggregate_df = process_contractnotes_folder(self.cnote_folder_path,
+        aggregated_dataframes_map = process_contractnotes_folder(self.cnote_folder_path,
                                                                  charges_aggregate_file_path=self.charges_file_path,
-                                                                 num_last_pages=self.cnote_num_last_pages,
                                                                  table_match_func=self.summary_match_func,
                                                                  table_post_process_func=self.summary_post_process_func,
                                                                  date_column=self.charges_date_column,
@@ -352,6 +325,7 @@ class Broker(Provider):
                                                                  end_date=end_date,
                                                                  dry_run=dry_run,
                                                                  max_count=max_count)
+        self.summary_aggregate_df = aggregated_dataframes_map['Summary']
 
     def reconcile(self, start_date=None, end_date=None):
         self.reconciled_df = reconcile_charges_and_ledger(self.tradeledger_df,

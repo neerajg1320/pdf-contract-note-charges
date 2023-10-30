@@ -8,7 +8,7 @@ data_type = 'sample'
 start_date = "2022-04-01"
 if data_type == 'sample':
     end_date = "2023-01-31"
-    max_count = 8
+    max_count = 3
 else:
     end_date = "2023-04-01"
     max_count = 0
@@ -28,7 +28,7 @@ def zerodha_match_summary_dataframe(df, **kwargs):
 zerodha_numeric_columns = ['Equity', 'Equity (T+1)', 'Futures and Options', 'NET TOTAL']
 
 
-def zerodha_post_process_summary_dataframe(cnote_file_path, date, df):
+def zerodha_post_process_summary_dataframe(cnote_file_path, date, df, df_info):
     if df.shape[1] == 4:
         print("Fixed the df")
         df['Equity (T+1)'] = ""
@@ -80,8 +80,8 @@ def axisdirect_match_dataframe(df, page_num=None, **kwargs):
 
     num_rows, num_columns = df.shape
 
-    # if num_rows == NUM_TRADE_COLUMNS:
-    #     return True
+    if num_rows == NUM_TRADE_COLUMNS:
+        return {'tag': 'Trades'}
 
     # df_print(df, shape=True, active=True)
 
@@ -94,7 +94,10 @@ def axisdirect_match_dataframe(df, page_num=None, **kwargs):
     return None
 
 
-def axisdirect_post_process_charges_dataframe(cnote_file_path, date, df):
+def axisdirect_post_process_charges_dataframe(cnote_file_path, date, df, df_info):
+    if df_info['tag'] != 'Summary':
+        return pd.DataFrame()
+
     df_print(df, active=False)
 
     gross_row_index = 0
@@ -157,7 +160,7 @@ def axisdirect_post_process_charges_dataframe(cnote_file_path, date, df):
 
     charges_sum_df['Status'] = charges_sum_df.loc[0, 'NetGrossDiff'] - charges_sum_df.loc[0, 'Total(Net)']
 
-    df_print(charges_sum_df, location=True, active=True)
+    df_print(charges_sum_df, location=True, active=False)
 
     # TBD: We need to fix this
     charges_sum_df = charges_sum_df.map(float)
@@ -182,5 +185,5 @@ axisdirect_broker = Broker('Axisdirect',
 
 
 # axisdirect_broker.read_ledger(start_date=start_date, end_date=end_date)
-axisdirect_broker.read_contract_notes(start_date=start_date, end_date=end_date, dry_run=True, max_count=max_count)
-# axisdirect_broker.compute(start_date=start_date, end_date=end_date, dry_run=True)
+# axisdirect_broker.read_contract_notes(start_date=start_date, end_date=end_date, dry_run=True, max_count=max_count)
+axisdirect_broker.compute(start_date=start_date, end_date=end_date, dry_run=True)
